@@ -3,7 +3,7 @@
     <NavBar />
     
     <main>
-      <HeroSection @parse="handleParse" :loading="loading" />
+      <HeroSection @parse="handleParse" @clear="handleClear" :loading="loading" />
       
       <div class="content-wrapper">
         <div v-if="globalError" class="global-error glass-panel">
@@ -30,6 +30,7 @@
 
 <script setup>
 import { ref, computed, nextTick } from 'vue';
+import { useI18n } from './i18n';
 import NavBar from './components/NavBar.vue';
 import HeroSection from './components/HeroSection.vue';
 import VideoResult from './components/VideoResult.vue';
@@ -38,6 +39,7 @@ import PlatformSection from './components/PlatformSection.vue';
 import FooterSection from './components/FooterSection.vue';
 import { api } from './api';
 
+const { t } = useI18n();
 const parsedVideo = ref(null);
 const currentUrl = ref('');
 const globalError = ref('');
@@ -66,10 +68,16 @@ const handleParse = async (url) => {
       resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (err) {
-    globalError.value = err.message || '解析失败，请检查链接或稍后重试。';
+    globalError.value = err.message || t.value.app.defaultError;
   } finally {
     loading.value = false;
   }
+};
+
+const handleClear = () => {
+  parsedVideo.value = null;
+  globalError.value = '';
+  currentUrl.value = '';
 };
 </script>
 

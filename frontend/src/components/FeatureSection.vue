@@ -13,23 +13,28 @@
 </template>
 
 <script setup>
-const features = [
+import { computed } from 'vue';
+import { useI18n } from '../i18n';
+
+const { t } = useI18n();
+
+const features = computed(() => [
   {
     icon: '⚡',
-    title: '1800+ 平台支持',
-    desc: '基于强大的 yt-dlp 引擎，支持主流平台包括 YouTube, Bilibili, 抖音, X/Twitter 等，几乎覆盖全网。'
+    title: t.value.features.f1.title,
+    desc: t.value.features.f1.desc
   },
   {
     icon: '🔒',
-    title: '安全且纯粹',
-    desc: '所有解析均在服务端或本地进行。没有烦人的广告，没有隐藏的弹窗，给你最极客的下载体验。'
+    title: t.value.features.f2.title,
+    desc: t.value.features.f2.desc
   },
   {
     icon: '✨',
-    title: '多画质自由选',
-    desc: '从 4K 超清到 480P 标清，或是纯音频提取，自由掌控你的下载需求。'
+    title: t.value.features.f3.title,
+    desc: t.value.features.f3.desc
   }
-];
+]);
 </script>
 
 <style scoped>

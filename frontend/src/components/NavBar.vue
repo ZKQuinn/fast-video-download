@@ -6,13 +6,21 @@
         <span class="logo-text">Fast Video <span class="text-gradient">Download</span></span>
       </div>
       <div class="nav-links">
+        <button @click="i18n.toggle()" class="lang-btn">
+          {{ i18n.current === 'zh' ? 'EN' : '中' }}
+        </button>
         <a href="https://github.com/ZKQuinn" target="_blank" class="github-link">
-          GitHub
+          {{ t.navbar.github }}
         </a>
       </div>
     </div>
   </nav>
 </template>
+
+<script setup>
+import { useI18n } from '../i18n';
+const { t, i18n } = useI18n();
+</script>
 
 <style scoped>
 .navbar {
@@ -52,6 +60,30 @@
 
 .logo-icon {
   font-size: 1.5rem;
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lang-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 44px;
+}
+
+.lang-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-1px);
 }
 
 .github-link {

@@ -6,28 +6,28 @@
            <div class="duration" v-if="video.duration_string">{{ video.duration_string }}</div>
        </div>
        <div class="video-info">
-           <h2 class="title">{{ video.title || '未知标题' }}</h2>
+           <h2 class="title">{{ video.title || t.videoResult.videoTitlePlaceholder }}</h2>
            <div class="meta">
                <span class="author" v-if="video.uploader">
                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                    {{ video.uploader }}
                </span>
                <span class="platform">
-                   Platform: <strong>{{ video.platform || 'Unknown' }}</strong>
+                   {{ t.videoResult.platform }} <strong>{{ video.platform || t.videoResult.unknown }}</strong>
                </span>
            </div>
        </div>
     </div>
 
     <div class="formats-section">
-        <h3>选择清晰度</h3>
+        <h3>{{ t.videoResult.resolution }}</h3>
         
         <div class="format-groups">
             <!-- Video Formats -->
             <div class="format-group" v-if="videoFormats.length">
                 <h4 class="group-title">
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                  视频（含音频）
+                  {{ t.videoResult.videoFormatsTitle }}
                 </h4>
                 <div class="format-list">
                     <label 
@@ -44,10 +44,10 @@
                           @change="isAudioOnly = false"
                         />
                         <div class="format-details">
-                            <span class="resolution">{{ fmt.height && fmt.height < 9999 ? fmt.height + 'p' : '自动' }}</span>
+                            <span class="resolution">{{ fmt.height && fmt.height < 9999 ? fmt.height + t.videoResult.resUnit : t.videoResult.auto }}</span>
                             <span class="ext">{{ fmt.ext?.toUpperCase() }}</span>
                             <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features"><small>🔊 含音频</small></span>
+                            <span class="features"><small>{{ t.videoResult.containsAudio }}</small></span>
                         </div>
                     </label>
                 </div>
@@ -57,7 +57,7 @@
             <div class="format-group" v-if="audioFormats.length">
                 <h4 class="group-title audio-title">
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                  仅音频
+                  {{ t.videoResult.audioFormatsTitle }}
                 </h4>
                 <div class="format-list">
                     <label 
@@ -75,9 +75,9 @@
                         />
                         <div class="format-details">
                             <span class="resolution">{{ fmt.ext?.toUpperCase() }}</span>
-                            <span class="ext">{{ fmt.abr ? Math.round(fmt.abr) + ' kbps' : '自动' }}</span>
+                            <span class="ext">{{ fmt.abr ? Math.round(fmt.abr) + ' kbps' : t.videoResult.auto }}</span>
                             <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features audio-badge"><small>🎵 纯音频</small></span>
+                            <span class="features audio-badge"><small>{{ t.videoResult.audioOnly }}</small></span>
                         </div>
                     </label>
                 </div>
@@ -90,7 +90,7 @@
                     <svg v-if="!downloading" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
                     <svg v-else class="spin" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
                 </span>
-                {{ downloading ? 'Downloading...' : 'Download File' }}
+                {{ downloading ? t.videoResult.downloading : t.videoResult.downloadButton }}
             </button>
             <div class="error-msg" v-if="error">{{ error }}</div>
         </div>
@@ -101,6 +101,9 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { api } from '../api';
+import { useI18n } from '../i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
     video: {
@@ -170,7 +173,7 @@ const handleDownload = async () => {
     try {
         await api.downloadVideo(props.url, selectedFormat.value, isAudioOnly.value);
     } catch (err) {
-        error.value = err.message || 'Download failed. Please try again.';
+        error.value = err.message || t.value.videoResult.errorDownloadFailed;
     } finally {
         downloading.value = false;
     }

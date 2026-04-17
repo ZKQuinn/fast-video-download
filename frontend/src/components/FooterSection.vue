@@ -3,18 +3,21 @@
     <div class="footer-content">
       <div class="footer-logo">⚡ Fast Video Download</div>
       <p class="copyright">
-        Made with <span class="heart">❤️</span> for you.<br/>
-        Powered by yt-dlp & Vue 3.
+        {{ t.footer.madeWith }} <span class="heart">❤️</span> {{ t.footer.forYou }}.<br/>
+        {{ t.footer.poweredBy }}
       </p>
       <div class="disclaimer">
-        Disclaimer: This tool is for personal and educational use only.<br/>
-        Please respect copyright laws and the terms of service of the respective platforms.
+        {{ t.footer.disclaimer1 }}<br/>
+        {{ t.footer.disclaimer2 }}
       </div>
     </div>
   </footer>
 </template>
 
-<style scoped>
+<script setup>
+import { useI18n } from '../i18n';
+const { t } = useI18n();
+</script><style scoped>
 .footer {
   margin-top: 100px;
   padding: 60px 24px;

@@ -1,12 +1,12 @@
 <template>
   <section class="platforms-section">
     <div class="section-title">
-      <h2>支持全球主流平台</h2>
-      <p>只要你能看到，就能被下载</p>
+      <h2>{{ t.platforms.title }}</h2>
+      <p>{{ t.platforms.subtitle }}</p>
     </div>
     
     <div class="platforms-grid">
-      <div class="platform-item glass-panel" v-for="p in platforms" :key="p.name">
+      <div class="platform-item glass-panel" v-for="p in translatedPlatforms" :key="p.name">
         <span class="p-name">{{ p.name }}</span>
       </div>
     </div>
@@ -14,6 +14,11 @@
 </template>
 
 <script setup>
+import { computed } from 'vue';
+import { useI18n } from '../i18n';
+
+const { t, i18n } = useI18n();
+
 const platforms = [
   { name: 'YouTube' },
   { name: 'Bilibili' },
@@ -25,9 +30,15 @@ const platforms = [
   { name: 'Vimeo' },
   { name: 'Reddit' },
   { name: 'SoundCloud' },
-  { name: 'Pinterest' },
-  { name: '更多 1800+ 站点...' },
+  { name: 'Pinterest' }
 ];
+
+const translatedPlatforms = computed(() => {
+  return [
+    ...platforms,
+    { name: i18n.current === 'zh' ? '全网更多站点...' : 'More Sites...' }
+  ];
+});
 </script>
 
 <style scoped>

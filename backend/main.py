@@ -67,7 +67,8 @@ async def parse_video(request: ParseRequest):
         if url.startswith("v.douyin.com") or "douyin.com" in url:
             if not url.startswith("http"):
                 url = "https://" + url
-            parsed_data = await DouyinParser.parse(url)
+            parser = DouyinParser()
+            parsed_data = await asyncio.to_thread(parser.parse, url)
             if not parsed_data:
                  raise HTTPException(status_code=400, detail="Failed to parse Douyin video")
             return parsed_data
@@ -96,19 +97,17 @@ async def download_video(request: DownloadRequest):
         if "douyin.com" in url or "v.douyin.com" in url:
              if not url.startswith("http"):
                 url = "https://" + url
-             parsed_data = await DouyinParser.parse(url)
-             if parsed_data and parsed_data.get('formats'):
-                 for fmt in parsed_data['formats']:
-                     if fmt['format_id'] == format_id:
-                         url = fmt['url']
-                         break
-             
-        downloader = VideoDownloader()
-        result = await asyncio.to_thread(
-            downloader.download_video,
-            url,
-            format_id
-        )
+             parser = DouyinParser()
+             mode = "audio" if is_audio else "video"
+             result = await asyncio.to_thread(parser.download, url, mode)
+        else:
+             downloader = VideoDownloader()
+             result = await asyncio.to_thread(
+                 downloader.download_video,
+                 url,
+                 format_id,
+                 is_audio_only=is_audio
+             )
 
         if not result or not os.path.exists(result["filepath"]):
              raise HTTPException(status_code=500, detail="Download failed or file not found")

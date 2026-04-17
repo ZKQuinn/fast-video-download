@@ -350,6 +350,7 @@ class DouyinParser:
             "upload_date": "",
             "description": title[:200],
             "formats": formats,
+            "audio_formats": [],
             "subtitles": [],
             "automatic_captions": [],
         }
