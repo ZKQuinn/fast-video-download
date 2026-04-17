@@ -6,7 +6,7 @@
         <span class="logo-text">Fast Video <span class="text-gradient">Download</span></span>
       </div>
       <div class="nav-links">
-        <a href="https://github.com/kwin" target="_blank" class="github-link">
+        <a href="https://github.com/ZKQuinn" target="_blank" class="github-link">
           GitHub
         </a>
       </div>

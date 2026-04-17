@@ -38,19 +38,19 @@
 import { ref } from 'vue';
 
 const url = ref('');
-const loading = ref(false);
+
+const props = defineProps({
+  loading: {
+    type: Boolean,
+    default: false
+  }
+});
 
 const emit = defineEmits(['parse']);
 
 const handleParse = () => {
-    if (!url.value.trim() || loading.value) return;
-    loading.value = true;
+    if (!url.value.trim() || props.loading) return;
     emit('parse', url.value.trim());
-    
-    // Simulate loading finish for now
-    setTimeout(() => {
-        loading.value = false;
-    }, 1000);
 };
 </script>
 

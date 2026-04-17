@@ -1,6 +1,7 @@
 import asyncio
 import os
 import time
+import re
 from urllib.parse import urlparse
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -57,7 +58,9 @@ async def health_check():
 @app.post("/api/parse")
 async def parse_video(request: ParseRequest):
     try:
-        url = request.url
+        # Extract url from potentially noisy text using regex
+        match = re.search(r"https?://[^\s]+", request.url)
+        url = match.group(0) if match else request.url
         print(f"Parsing URL: {url}")
         
         # Specific handling for Douyin
@@ -81,7 +84,10 @@ async def parse_video(request: ParseRequest):
 @app.post("/api/download")
 async def download_video(request: DownloadRequest):
     try:
-        url = request.url
+        # Extract url from potentially noisy text using regex
+        match = re.search(r"https?://[^\s]+", request.url)
+        url = match.group(0) if match else request.url
+        
         format_id = request.format_id
         is_audio = request.is_audio_only
         print(f"Downloading: {url}, Format: {format_id}, Audio: {is_audio}")
@@ -97,18 +103,17 @@ async def download_video(request: DownloadRequest):
                          url = fmt['url']
                          break
              
-        downloader = VideoDownloader(output_dir=DOWNLOAD_DIR)
+        downloader = VideoDownloader()
         result = await asyncio.to_thread(
-            downloader.download,
+            downloader.download_video,
             url,
-            format_id,
-            is_audio
+            format_id
         )
 
-        if not result or not os.path.exists(result["file_path"]):
+        if not result or not os.path.exists(result["filepath"]):
              raise HTTPException(status_code=500, detail="Download failed or file not found")
 
-        file_path = result["file_path"]
+        file_path = result["filepath"]
         
         # Function to stream and delete file after download
         async def file_streamer():

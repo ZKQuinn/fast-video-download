@@ -1,19 +1,19 @@
 <template>
-  <div class="video-result glass-panel" v-if="video">
+  <div class="video-result glass-panel" v-if="video && video.formats">
     <div class="video-header">
        <div class="thumbnail">
-           <img :src="api.getProxyUrl(video.thumbnail)" :alt="video.title" v-if="video.thumbnail" />
+           <img :src="thumbnailUrl" :alt="video.title" v-if="thumbnailUrl" />
            <div class="duration" v-if="video.duration_string">{{ video.duration_string }}</div>
        </div>
        <div class="video-info">
-           <h2 class="title">{{ video.title }}</h2>
+           <h2 class="title">{{ video.title || '未知标题' }}</h2>
            <div class="meta">
                <span class="author" v-if="video.uploader">
                    <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
                    {{ video.uploader }}
                </span>
                <span class="platform">
-                   Platform: <strong>{{ video.extractor_key || 'Unknown' }}</strong>
+                   Platform: <strong>{{ video.platform || 'Unknown' }}</strong>
                </span>
            </div>
        </div>
@@ -44,10 +44,10 @@
                           @change="isAudioOnly = false"
                         />
                         <div class="format-details">
-                            <span class="resolution">{{ fmt.resolution || (fmt.height ? fmt.height + 'p' : 'Auto') }}</span>
+                            <span class="resolution">{{ fmt.label || (fmt.height ? fmt.height + 'p' : 'Auto') }}</span>
                             <span class="ext">{{ fmt.ext }}</span>
                             <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features" v-if="fmt.acodec !== 'none'"><small>✓ Audio</small></span>
+                            <span class="features" v-if="fmt.has_audio"><small>✓ Audio</small></span>
                             <span class="features muted" v-else><small>✕ No Audio</small></span>
                         </div>
                     </label>
@@ -118,10 +118,31 @@ const isAudioOnly = ref(false);
 const downloading = ref(false);
 const error = ref('');
 
-// Auto-select best format when video changes
+const thumbnailUrl = computed(() => {
+    if (!props.video || !props.video.thumbnail) return '';
+    return api.getProxyUrl(props.video.thumbnail);
+});
+
+const videoFormats = computed(() => {
+    if (!props.video || !props.video.formats) return [];
+    return props.video.formats.filter(f => {
+        const vcodec = f.vcodec || '';
+        return vcodec !== 'none' && vcodec !== '';
+    });
+});
+
+const audioFormats = computed(() => {
+    if (!props.video || !props.video.formats) return [];
+    return props.video.formats.filter(f => {
+        const vcodec = f.vcodec || '';
+        const acodec = f.acodec || '';
+        return vcodec === 'none' && acodec !== 'none' && acodec !== '';
+    });
+});
+
+// Auto-select best format when video changes (must be after videoFormats declaration)
 watch(() => props.video, (newVal) => {
     if (newVal && newVal.formats && newVal.formats.length > 0) {
-        // Try to pick a good default (video with audio)
         const vids = videoFormats.value;
         if (vids.length > 0) {
             selectedFormat.value = vids[0].format_id;
@@ -129,20 +150,11 @@ watch(() => props.video, (newVal) => {
         } else if (newVal.formats.length > 0) {
             selectedFormat.value = newVal.formats[0].format_id;
         }
+    } else {
+        selectedFormat.value = '';
     }
+    error.value = '';
 }, { immediate: true });
-
-const videoFormats = computed(() => {
-    if (!props.video || !props.video.formats) return [];
-    // Only video formats (ensure they have vcodec or are explicit video)
-    return props.video.formats.filter(f => f.vcodec !== 'none' || !f.vcodec);
-});
-
-const audioFormats = computed(() => {
-    if (!props.video || !props.video.formats) return [];
-    // Only audio formats
-    return props.video.formats.filter(f => f.vcodec === 'none' && f.acodec !== 'none');
-});
 
 const formatBytes = (bytes, decimals = 2) => {
     if (!+bytes) return '0 Bytes';

@@ -3,7 +3,7 @@
     <NavBar />
     
     <main>
-      <HeroSection @parse="handleParse" />
+      <HeroSection @parse="handleParse" :loading="loading" />
       
       <div class="content-wrapper">
         <div v-if="globalError" class="global-error glass-panel">
@@ -12,15 +12,15 @@
         </div>
         
         <VideoResult 
-          v-if="videoData" 
-          :video="videoData" 
+          v-if="showResult" 
+          :video="parsedVideo" 
           :url="currentUrl"
         />
 
-        <div v-if="!videoData">
+        <template v-if="!showResult">
           <FeatureSection />
           <PlatformSection />
-        </div>
+        </template>
       </div>
     </main>
 
@@ -29,7 +29,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, computed, nextTick } from 'vue';
 import NavBar from './components/NavBar.vue';
 import HeroSection from './components/HeroSection.vue';
 import VideoResult from './components/VideoResult.vue';
@@ -38,27 +38,37 @@ import PlatformSection from './components/PlatformSection.vue';
 import FooterSection from './components/FooterSection.vue';
 import { api } from './api';
 
-const videoData = ref(null);
+const parsedVideo = ref(null);
 const currentUrl = ref('');
 const globalError = ref('');
+const loading = ref(false);
+
+const showResult = computed(() => parsedVideo.value !== null);
 
 const handleParse = async (url) => {
   globalError.value = '';
-  videoData.value = null;
+  parsedVideo.value = null;
   currentUrl.value = url;
+  loading.value = true;
   
   try {
     const data = await api.parseVideo(url);
-    videoData.value = data;
-    // Auto scroll to result smoothly
-    setTimeout(() => {
-        window.scrollTo({
-            top: window.innerHeight * 0.7,
-            behavior: 'smooth'
-        });
-    }, 100);
+    
+    // Wait for Vue to finish any pending DOM updates before setting new data
+    await nextTick();
+    
+    parsedVideo.value = data;
+    
+    // Scroll to result after next render cycle
+    await nextTick();
+    const resultEl = document.querySelector('.video-result');
+    if (resultEl) {
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   } catch (err) {
     globalError.value = err.message || '解析失败，请检查链接或稍后重试。';
+  } finally {
+    loading.value = false;
   }
 };
 </script>
