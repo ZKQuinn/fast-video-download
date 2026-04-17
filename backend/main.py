@@ -129,9 +129,11 @@ async def download_video(request: DownloadRequest):
                          print(f"Error removing temp file {file_path}: {e}")
 
         filename = os.path.basename(file_path)
-        # Use appropriate content-type and content-disposition
+        # URL-encode filename for Content-Disposition (supports Unicode/Chinese chars)
+        from urllib.parse import quote
+        encoded_filename = quote(filename)
         headers = {
-             "Content-Disposition": f'attachment; filename="{filename}"'
+             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
         }
         return StreamingResponse(
                file_streamer(), 

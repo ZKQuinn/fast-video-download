@@ -55,9 +55,13 @@ export const api = {
         const contentDisposition = response.headers.get('Content-Disposition');
         let filename = 'video_download.mp4';
         if (contentDisposition) {
-            const match = contentDisposition.match(/filename="(.+?)"/);
-            if (match && match.length === 2) {
-                filename = match[1];
+            // Support RFC 5987 filename*=UTF-8''encoded_name
+            const utf8Match = contentDisposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/i);
+            const stdMatch = contentDisposition.match(/filename="(.+?)"/);
+            if (utf8Match && utf8Match[1]) {
+                filename = decodeURIComponent(utf8Match[1]);
+            } else if (stdMatch && stdMatch[1]) {
+                filename = stdMatch[1];
             }
         }
 
