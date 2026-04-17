@@ -111,85 +111,110 @@ async def download_video(
     is_audio_only: Optional[bool] = Query(False)
 ):
     try:
-        # 如果是 POST 请求，尝试从 JSON Body 中读取参数
         if request.method == "POST":
             try:
                 body = await request.json()
                 if not url: url = body.get("url")
                 if format_id == "best": format_id = body.get("format_id", "best")
                 if not is_audio_only: is_audio_only = body.get("is_audio_only", False)
-            except:
-                pass
+            except: pass
 
         if not url:
             raise HTTPException(status_code=400, detail="必须提供视频链接 URL")
 
-        # 提取 URL
         match = re.search(r"https?://[^\s]+", url)
         target_url = match.group(0) if match else url
-        print(f"执行下载任务: {target_url}, 格式: {format_id}, 模式: {'仅音频' if is_audio_only else '视频'}")
-
-        # 1. 执行下载任务
-        if "douyin.com" in target_url or "v.douyin.com" in target_url:
-             if not target_url.startswith("http"):
-                target_url = "https://" + target_url
-             parser = DouyinParser()
-             mode = "audio" if is_audio_only else "video"
-             result = await asyncio.to_thread(parser.download, target_url, mode)
-        else:
-             downloader = VideoDownloader()
-             result = await asyncio.to_thread(
-                 downloader.download_video,
-                 target_url,
-                 format_id,
-                 is_audio_only=is_audio_only
-             )
-
-        if not result or not os.path.exists(result["filepath"]):
-             raise HTTPException(status_code=500, detail="本地下载任务失败")
-
-        file_path = result["filepath"]
-        file_size = os.path.getsize(file_path) # 获取文件大小以支持浏览器进度显示
-        filename = os.path.basename(file_path)
         
-        # 编码文件名以支持中文
+        # 1. 快速获取视频元数据（不下载）
+        downloader = VideoDownloader()
+        # 这里调用我们定义的解析方法获取基础信息
+        video_data = await asyncio.to_thread(downloader.parse_video, target_url)
+        title = video_data.get("title", "video").replace("/", "_").replace("\\", "_")
+        
+        # 从 formats 中尝试获取预览时的大小
+        file_size = None
+        ext = "mp4"
+        
+        # 尝试匹配选中的 format_id 获取精确大小和后缀
+        all_formats = (video_data.get("formats", []) or []) + (video_data.get("audio_formats", []) or [])
+        for f in all_formats:
+            if f.get("format_id") == format_id:
+                file_size = f.get("filesize_raw")
+                ext = f.get("ext", "mp4")
+                break
+        
+        if is_audio_only: ext = "mp3"
+        filename = f"{title}.{ext}"
+        
         from urllib.parse import quote
         encoded_filename = quote(filename)
 
-        # 2. 准备流式响应
-        async def file_streamer():
-            try:
-                with open(file_path, "rb") as f:
-                    while chunk := f.read(1024 * 1024):  # 1MB 采样块
-                        yield chunk
-            finally:
-                # 传输完成后删除临时文件
-                if os.path.exists(file_path):
-                      try:
-                          os.unlink(file_path)
-                          print(f"清理临时下载文件: {file_path}")
-                      except:
-                          pass
+        # 2. 准备流式子进程
+        import subprocess
+        async def stream_generator():
+            # 针对不同平台优化参数
+            cmd = [
+                "yt-dlp",
+                "-f", format_id,
+                "-o", "-",  # 关键：输出到 stdout
+                "--quiet",
+                "--no-warnings",
+            ]
+            
+            if downloader.has_ffmpeg:
+                cmd.extend(["--ffmpeg-location", downloader.ffmpeg_path])
+                # 如果是合并音视频，强制开启流式封装格式 (Fragmented MP4)
+                cmd.extend(["--postprocessor-args", "merger:-movflags frag_keyframe+empty_moov+default_base_moof"])
+                
+            cmd.append(target_url)
 
-        # 设置关键响应头：
-        # Content-Disposition: 触发下载对话框（仅使用 UTF-8 编码版本以避免 latin-1 错误）
-        # Content-Length: 让浏览器显示进度百分比和剩余时间
+            # 配置环境变量以找到 ffmpeg
+            env = os.environ.copy()
+            if downloader.has_ffmpeg:
+                path_sep = ";" if os.name == "nt" else ":"
+                env["PATH"] = downloader.ffmpeg_path + path_sep + env.get("PATH", "")
+
+            process = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env
+            )
+            
+            print(f"DEBUG: 开启实时流式下载管道: {filename}")
+            
+            try:
+                while True:
+                    chunk = await process.stdout.read(1024 * 128) # 128KB 缓冲区
+                    if not chunk:
+                        break
+                    yield chunk
+            except Exception as e:
+                print(f"DEBUG: 流传输中断: {e}")
+            finally:
+                if process.returncode is None:
+                    try: process.terminate()
+                    except: pass
+                await process.wait()
+
+        # 3. 立即返回响应头
         headers = {
             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-            "Content-Length": str(file_size)
+            "X-Content-Type-Options": "nosniff",
+            "Content-Type": "application/octet-stream"
         }
+        if file_size:
+            headers["Content-Length"] = str(file_size)
 
         return StreamingResponse(
-            file_streamer(), 
-            media_type="application/octet-stream",
+            stream_generator(),
             headers=headers
         )
 
     except Exception as e:
-        print(f"Download processing failed: {str(e)}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"下载启动失败: {str(e)}")
 
 # 接口 4: 封面图代理（绕过防盗链）
 @app.get("/api/proxy/thumbnail")
