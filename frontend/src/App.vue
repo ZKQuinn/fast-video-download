@@ -1,3 +1,8 @@
+<!--
+  Fast Video Download - 前端界面
+  版权所有 © 2024 保留所有权利
+  本项目仅用于技术学习和研究目的。请用户遵守当地法律法规。
+-->
 <template>
   <div class="app-container">
     <NavBar />

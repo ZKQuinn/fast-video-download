@@ -1,3 +1,17 @@
+"""
+Fast Video Download - 后端服务
+版权所有 © 2024 保留所有权利
+
+[合规与免责声明]
+本项目仅用于技术学习和研究目的。请用户仅下载自己拥有版权或已获得合法授权的内容。
+用户应自行遵守所在地区的法律法规及各平台的服务条款。使用即表示您同意自行承担所有法律后果。
+
+Copyright © 2024 All Rights Reserved.
+[Compliance & Disclaimer]
+This project is for technical learning and research purposes only. 
+Please only download content you own or have legal authorization for. 
+Users are responsible for complying with local laws and platform terms.
+"""
 import asyncio
 import os
 import time

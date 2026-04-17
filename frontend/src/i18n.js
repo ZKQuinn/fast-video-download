@@ -27,8 +27,9 @@ export const locales = {
       madeWith: "为您精心制作",
       forYou: "由我",
       poweredBy: "基于 yt-dlp 与 Vue 3 驱动",
-      disclaimer1: "免责声明: 本工具仅供个人学习交流使用。",
-      disclaimer2: "请尊重版权以及各平台的服务条款。"
+      disclaimer1: "免责声明: 本项目仅用于技术学习和研究目的。",
+      disclaimer2: "请用户仅下载自己拥有版权或已获得合法授权的内容。用户应自行遵守所在地区的法律法规及各平台的服务条款。",
+      copyRight: "© 2024 Fast Video Download. 保留所有权利。"
     },
     videoResult: {
       duration: "时长:",
@@ -79,8 +80,9 @@ export const locales = {
       madeWith: "Made with",
       forYou: "for you",
       poweredBy: "Powered by yt-dlp & Vue 3.",
-      disclaimer1: "Disclaimer: This tool is for personal and educational use only.",
-      disclaimer2: "Please respect copyright laws and the terms of service of the respective platforms."
+      disclaimer1: "Disclaimer: This project is for technical learning and research purposes only.",
+      disclaimer2: "Please only download content you own or have legal authorization for. Users are responsible for complying with local laws and platform terms.",
+      copyRight: "© 2024 Fast Video Download. All Rights Reserved."
     },
     videoResult: {
       duration: "Duration:",

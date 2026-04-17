@@ -10,6 +10,9 @@
         {{ t.footer.disclaimer1 }}<br/>
         {{ t.footer.disclaimer2 }}
       </div>
+      <div class="copyright-bar">
+        {{ t.footer.copyRight }}
+      </div>
     </div>
   </footer>
 </template>
@@ -55,5 +58,14 @@ const { t } = useI18n();
   font-size: 0.8rem;
   color: var(--text-muted);
   line-height: 1.6;
+}
+
+.copyright-bar {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  opacity: 0.8;
 }
 </style>
