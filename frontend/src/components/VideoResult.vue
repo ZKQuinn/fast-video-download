@@ -20,14 +20,14 @@
     </div>
 
     <div class="formats-section">
-        <h3>Select Quality</h3>
+        <h3>选择清晰度</h3>
         
         <div class="format-groups">
             <!-- Video Formats -->
             <div class="format-group" v-if="videoFormats.length">
                 <h4 class="group-title">
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                  Video
+                  视频（含音频）
                 </h4>
                 <div class="format-list">
                     <label 
@@ -44,11 +44,10 @@
                           @change="isAudioOnly = false"
                         />
                         <div class="format-details">
-                            <span class="resolution">{{ fmt.label || (fmt.height ? fmt.height + 'p' : 'Auto') }}</span>
-                            <span class="ext">{{ fmt.ext }}</span>
+                            <span class="resolution">{{ fmt.height && fmt.height < 9999 ? fmt.height + 'p' : '自动' }}</span>
+                            <span class="ext">{{ fmt.ext?.toUpperCase() }}</span>
                             <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features" v-if="fmt.has_audio"><small>✓ Audio</small></span>
-                            <span class="features muted" v-else><small>✕ No Audio</small></span>
+                            <span class="features"><small>🔊 含音频</small></span>
                         </div>
                     </label>
                 </div>
@@ -56,9 +55,9 @@
 
             <!-- Audio Formats -->
             <div class="format-group" v-if="audioFormats.length">
-                <h4 class="group-title">
+                <h4 class="group-title audio-title">
                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                  Audio Only
+                  仅音频
                 </h4>
                 <div class="format-list">
                     <label 
@@ -75,9 +74,10 @@
                           @change="isAudioOnly = true"
                         />
                         <div class="format-details">
-                            <span class="resolution">{{ fmt.ext }}</span>
-                            <span class="ext">{{ fmt.abr ? Math.round(fmt.abr) + 'kbps' : 'Auto' }}</span>
+                            <span class="resolution">{{ fmt.ext?.toUpperCase() }}</span>
+                            <span class="ext">{{ fmt.abr ? Math.round(fmt.abr) + ' kbps' : '自动' }}</span>
                             <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
+                            <span class="features audio-badge"><small>🎵 纯音频</small></span>
                         </div>
                     </label>
                 </div>
@@ -123,21 +123,17 @@ const thumbnailUrl = computed(() => {
     return api.getProxyUrl(props.video.thumbnail);
 });
 
+// 视频格式（后端已保证含音频，已按清晰度降序排列）
 const videoFormats = computed(() => {
-    if (!props.video || !props.video.formats) return [];
-    return props.video.formats.filter(f => {
-        const vcodec = f.vcodec || '';
-        return vcodec !== 'none' && vcodec !== '';
-    });
+    if (!props.video) return [];
+    // 优先使用后端返回的 formats（已是视频+音频格式）
+    return props.video.formats || [];
 });
 
+// 纯音频格式（后端单独返回的 audio_formats 字段）
 const audioFormats = computed(() => {
-    if (!props.video || !props.video.formats) return [];
-    return props.video.formats.filter(f => {
-        const vcodec = f.vcodec || '';
-        const acodec = f.acodec || '';
-        return vcodec === 'none' && acodec !== 'none' && acodec !== '';
-    });
+    if (!props.video) return [];
+    return props.video.audio_formats || [];
 });
 
 // Auto-select best format when video changes (must be after videoFormats declaration)
@@ -290,6 +286,17 @@ const handleDownload = async () => {
   gap: 8px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.audio-title {
+  color: #a78bfa;
+  margin-top: 8px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.audio-badge {
+  color: #a78bfa !important;
 }
 
 .format-list {
