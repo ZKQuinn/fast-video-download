@@ -16,6 +16,7 @@ import asyncio
 import os
 import time
 import re
+from typing import Optional
 from urllib.parse import urlparse
 import httpx
 from fastapi import FastAPI, HTTPException, Request
@@ -101,64 +102,87 @@ async def parse_video(request: ParseRequest):
          raise HTTPException(status_code=500, detail=str(e))
 
 # 接口 3: 执行下载并流化返回文件
-@app.post("/api/download")
-async def download_video(request: DownloadRequest):
+# 支持 GET 和 POST。GET 用于浏览器原生下载显示进度，POST 保持兼容性。
+@app.api_route("/api/download", methods=["GET", "POST"])
+async def download_video(
+    request: Request,
+    url: Optional[str] = Query(None),
+    format_id: Optional[str] = Query("best"),
+    is_audio_only: Optional[bool] = Query(False)
+):
     try:
-        # 提取 URL
-        match = re.search(r"https?://[^\s]+", request.url)
-        url = match.group(0) if match else request.url
-        
-        format_id = request.format_id
-        is_audio = request.is_audio_only
-        print(f"正在下载: {url}, 格式: {format_id}, 模式: {'仅音频' if is_audio else '视频'}")
+        # 如果是 POST 请求，尝试从 JSON Body 中读取参数
+        if request.method == "POST":
+            try:
+                body = await request.json()
+                if not url: url = body.get("url")
+                if format_id == "best": format_id = body.get("format_id", "best")
+                if not is_audio_only: is_audio_only = body.get("is_audio_only", False)
+            except:
+                pass
 
-        # 抖音下载（使用内部逻辑）
-        if "douyin.com" in url or "v.douyin.com" in url:
-             if not url.startswith("http"):
-                url = "https://" + url
+        if not url:
+            raise HTTPException(status_code=400, detail="必须提供视频链接 URL")
+
+        # 提取 URL
+        match = re.search(r"https?://[^\s]+", url)
+        target_url = match.group(0) if match else url
+        print(f"执行下载任务: {target_url}, 格式: {format_id}, 模式: {'仅音频' if is_audio_only else '视频'}")
+
+        # 1. 执行下载任务
+        if "douyin.com" in target_url or "v.douyin.com" in target_url:
+             if not target_url.startswith("http"):
+                target_url = "https://" + target_url
              parser = DouyinParser()
-             mode = "audio" if is_audio else "video"
-             result = await asyncio.to_thread(parser.download, url, mode)
+             mode = "audio" if is_audio_only else "video"
+             result = await asyncio.to_thread(parser.download, target_url, mode)
         else:
-             # 其他平台使用 yt-dlp+FFmpeg 实现合并下载
              downloader = VideoDownloader()
              result = await asyncio.to_thread(
                  downloader.download_video,
-                 url,
+                 target_url,
                  format_id,
-                 is_audio_only=is_audio
+                 is_audio_only=is_audio_only
              )
 
         if not result or not os.path.exists(result["filepath"]):
-             raise HTTPException(status_code=500, detail="文件下载失败或路径不存在")
+             raise HTTPException(status_code=500, detail="本地下载任务失败")
 
         file_path = result["filepath"]
+        file_size = os.path.getsize(file_path) # 获取文件大小以支持浏览器进度显示
+        filename = os.path.basename(file_path)
         
-        # 生成器函数：通过流式响应读取文件，并在发送完毕后自动删除临时文件
+        # 编码文件名以支持中文
+        from urllib.parse import quote
+        encoded_filename = quote(filename)
+
+        # 2. 准备流式响应
         async def file_streamer():
             try:
                 with open(file_path, "rb") as f:
-                    while chunk := f.read(8192 * 1024):  # 每次读取 8MB
+                    while chunk := f.read(1024 * 1024):  # 1MB 采样块
                         yield chunk
             finally:
+                # 传输完成后删除临时文件
                 if os.path.exists(file_path):
-                     try:
-                         os.unlink(file_path) # 删除服务器临时文件
-                         print(f"临时文件已清理: {file_path}")
-                     except Exception as e:
-                         print(f"清理临时文件失败 {file_path}: {e}")
+                      try:
+                          os.unlink(file_path)
+                          print(f"清理临时下载文件: {file_path}")
+                      except:
+                          pass
 
-        filename = os.path.basename(file_path)
-        # 对中文文件名进行 URL 编码，确保浏览器下载对话框正常显示中文
-        from urllib.parse import quote
-        encoded_filename = quote(filename)
+        # 设置关键响应头：
+        # Content-Disposition: 触发下载对话框
+        # Content-Length: 让浏览器显示进度百分比和剩余时间
         headers = {
-             "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
+            "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{encoded_filename}",
+            "Content-Length": str(file_size)
         }
+
         return StreamingResponse(
-               file_streamer(), 
-               media_type="application/octet-stream",
-               headers=headers
+            file_streamer(), 
+            media_type="application/octet-stream",
+            headers=headers
         )
 
     except Exception as e:

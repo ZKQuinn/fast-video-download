@@ -40,51 +40,23 @@ export const api = {
     },
 
     /**
-     * 执行下载任务并处理文件保存
+     * 执行下载任务：改用原生浏览器下载方式，以直观显示进度条
      * @param {string} url 视频链接
      * @param {string} format_id 选择的画质/格式 ID
      * @param {boolean} is_audio_only 是否仅下载音频
      */
     async downloadVideo(url, format_id, is_audio_only = false) {
-        // 向后端发起下载请求
-        const response = await fetch(`${API_BASE}/download`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url, format_id, is_audio_only })
+        // 构建带有参数的 GET 请求链接
+        const params = new URLSearchParams({
+            url: url,
+            format_id: format_id,
+            is_audio_only: is_audio_only
         });
-
-        if (!response.ok) {
-             throw new Error('下载失败，请稍后重试');
-        }
-
-        // 从响应头解析文件名 (支持 UTF-8 编码的特殊字符)
-        const contentDisposition = response.headers.get('Content-Disposition');
-        let filename = 'video_download.mp4';
-        if (contentDisposition) {
-            // 解析兼容 RFC 5987 的文件名格式
-            const utf8Match = contentDisposition.match(/filename\*=UTF-8''(.+?)(?:;|$)/i);
-            const stdMatch = contentDisposition.match(/filename="(.+?)"/);
-            if (utf8Match && utf8Match[1]) {
-                filename = decodeURIComponent(utf8Match[1]);
-            } else if (stdMatch && stdMatch[1]) {
-                filename = stdMatch[1];
-            }
-        }
-
-        // 将媒体流转换为 Blob 对象
-        const blob = await response.blob();
-        // 创建临时的对象 URL 并发起浏览器下载动作
-        const objectUrl = URL.createObjectURL(blob);
         
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = objectUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
+        const downloadUrl = `${API_BASE}/download?${params.toString()}`;
         
-        // 清理现场：移除元素并释放 URL 对象占用内存
-        document.body.removeChild(a);
-        URL.revokeObjectURL(objectUrl);
+        // 直接通过浏览器地址跳转触发下载（后端返回 Content-Disposition: attachment）
+        // 这种方式能让浏览器下载管理器接管，从而看到实时的下载进度
+        window.location.href = downloadUrl;
     }
 };
