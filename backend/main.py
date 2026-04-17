@@ -19,7 +19,7 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 import httpx
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -172,10 +172,10 @@ async def download_video(
                           pass
 
         # 设置关键响应头：
-        # Content-Disposition: 触发下载对话框
+        # Content-Disposition: 触发下载对话框（仅使用 UTF-8 编码版本以避免 latin-1 错误）
         # Content-Length: 让浏览器显示进度百分比和剩余时间
         headers = {
-            "Content-Disposition": f"attachment; filename=\"{filename}\"; filename*=UTF-8''{encoded_filename}",
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
             "Content-Length": str(file_size)
         }
 
