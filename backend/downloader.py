@@ -96,13 +96,13 @@ class VideoDownloader:
 
     def _extract_formats(self, info: dict) -> tuple[list, list]:
         """
-        从 yt-dlp info 中提取并整理可用格式。
+        从 yt-dlp 解析出的原始元数据中过滤、提取并整理成前端可用的统一格式列表。
         返回 (video_formats, audio_formats) 两个列表。
         
-        关键规则：
-        - 视频格式：始终包含音频（有音频流的优先；无音频的视频流自动标记为需合并 bestaudio）
-        - 音频格式：纯音频流，单独列在下方
-        - 按清晰度从高到低排序
+        解析逻辑：
+        - 视频格式：优先选择包含音频的流；对于音画分离的流（Dash/HLS），标记为需合并 bestaudio。
+        - 去重逻辑：同分辨率和同后缀的流只保留一个，避免列表过长。
+        - 排序：按高度 (Resolution) 降序排列。
         """
         raw_formats = info.get("formats", [])
         if not raw_formats:
@@ -214,7 +214,11 @@ class VideoDownloader:
         return video_results[:12], audio_results[:6]
 
     def download_video(self, url: str, format_id: str, is_audio_only: bool = False) -> dict:
-        """下载视频到服务器临时目录，返回文件路径和元数据"""
+        """
+        执行实际的下载操作。
+        如果需要合并流（比如 1080p 视频 + 独立音频），会调用 FFmpeg 进行处理。
+        下载后的文件会根据视频标题进行命名，并存储在 downloads 目录中。
+        """
 
         # 如果没有 ffmpeg，无法合并流，回退到单流最佳
         if not self.has_ffmpeg and ("+" in format_id or format_id.endswith("/best")):

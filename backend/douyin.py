@@ -58,11 +58,12 @@ def is_douyin_url(url: str) -> bool:
 
 
 class DouyinParser:
-    """抖音视频解析器，无需 Cookie"""
+    """抖音视频解析器，无需 Cookie。原理是通过公开 API 或分享页 HTML 提取数据。"""
 
     API_URL = "https://www.iesdouyin.com/web/api/v2/aweme/iteminfo/"
 
     def __init__(self, download_dir: str = "downloads"):
+        """初始化下载目录、Session 客户端及超时重试配置"""
         self.download_dir = Path(download_dir)
         self.download_dir.mkdir(parents=True, exist_ok=True)
         self.session = requests.Session()
@@ -71,7 +72,7 @@ class DouyinParser:
         self.max_retries = 3
 
     def parse(self, url: str) -> dict:
-        """解析抖音视频信息，返回统一格式"""
+        """解析抖音视频：1. 提取 URL -> 2. 跟随重定向 -> 3. 提取视频 ID -> 4. 获取元数据"""
         share_url = self._extract_url(url)
         resolved_url = self._resolve_redirect(share_url)
         video_id = self._extract_video_id(resolved_url)
@@ -80,7 +81,10 @@ class DouyinParser:
         return self._build_result(item_info, video_id)
 
     def download(self, url: str, mode: str = "video") -> dict:
-        """下载抖音视频，返回文件路径"""
+        """
+        下载流程：解析链接信息，获取媒体直接地址，然后流式下载到本地
+        mode: 'video' (视频) 或 'audio' (音频)
+        """
         share_url = self._extract_url(url)
         resolved_url = self._resolve_redirect(share_url)
         video_id = self._extract_video_id(resolved_url)
@@ -88,6 +92,8 @@ class DouyinParser:
         item_info = self._fetch_item_info(video_id, resolved_url)
         media_url = self._get_media_url(item_info, mode)
         title = item_info.get("desc") or f"douyin_{video_id}"
+        
+        # 文件名合法化处理：移除特殊字符并限制长度
         safe_title = re.sub(r'[\\/*?:"<>|\n\r\t#@]', "_", title).strip("_. ")[:60]
         safe_title = re.sub(r'_+', '_', safe_title)
         if not safe_title:
@@ -153,11 +159,11 @@ class DouyinParser:
         raise ValueError("无法从链接中提取视频ID")
 
     def _fetch_item_info(self, video_id: str, resolved_url: str) -> dict:
-        """获取视频元数据，优先公开 API，失败则解析分享页"""
+        """获取视频元数据，优先使用官方公开 API，如果失败则尝试从网页 HTML 中解析数据"""
         try:
             return self._fetch_via_api(video_id)
         except Exception as e:
-            logger.warning("公开API获取失败(%s)，尝试分享页解析", e)
+            logger.warning("官方 API 获取失败 (%s)，尝试解析分享页 HTML", e)
             return self._fetch_via_share_page(video_id, resolved_url)
 
     def _fetch_via_api(self, video_id: str) -> dict:
@@ -212,13 +218,14 @@ class DouyinParser:
         raise ValueError("分享页中未找到视频信息")
 
     def _solve_waf_and_retry(self, html: str, page_url: str) -> str:
-        """解决抖音 WAF 反爬验证"""
+        """解决抖音 WAF (Web Application Firewall) 反爬验证：模拟计算 Proof-of-Work 挑战"""
         match = re.search(r'wci="([^"]+)"\s*,\s*cs="([^"]+)"', html)
         if not match:
             return html
 
         cookie_name, challenge_blob = match.groups()
         try:
+            # 解码 WAF 挑战数据
             decoded = self._decode_b64(challenge_blob).decode("utf-8")
             challenge_data = json.loads(decoded)
             prefix = self._decode_b64(challenge_data["v"]["a"])
@@ -226,6 +233,7 @@ class DouyinParser:
         except (KeyError, ValueError):
             return html
 
+        # 暴力破解 SHA256 碰撞 (Proof of Work)
         for candidate in range(1_000_001):
             digest = hashlib.sha256(prefix + str(candidate).encode()).hexdigest()
             if digest == expected:
@@ -236,6 +244,7 @@ class DouyinParser:
                     json.dumps(challenge_data, separators=(",", ":")).encode()
                 ).decode()
                 domain = urlparse(page_url).hostname or "www.iesdouyin.com"
+                # 设置验证通过后的 Cookie 并重试请求
                 self.session.cookies.set(cookie_name, cookie_val, domain=domain, path="/")
                 resp = self.session.get(page_url, headers=MOBILE_HEADERS, timeout=self.timeout)
                 return resp.text or ""

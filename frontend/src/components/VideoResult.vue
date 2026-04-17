@@ -103,8 +103,10 @@ import { ref, computed, watch } from 'vue';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 
+// 国际化文案
 const { t } = useI18n();
 
+// 定义属性
 const props = defineProps({
     video: {
         type: Object,
@@ -116,30 +118,31 @@ const props = defineProps({
     }
 });
 
-const selectedFormat = ref('');
-const isAudioOnly = ref(false);
-const downloading = ref(false);
-const error = ref('');
+// UI 状态变量
+const selectedFormat = ref(''); // 用户选中的格式 ID
+const isAudioOnly = ref(false); // 是否当前选择的是纯音频
+const downloading = ref(false); // 下载状态
+const error = ref('');           // 局部下载错误
 
+// 处理封面图的计算属性：通过后端代理绕过防盗链
 const thumbnailUrl = computed(() => {
     if (!props.video || !props.video.thumbnail) return '';
     return api.getProxyUrl(props.video.thumbnail);
 });
 
-// 视频格式（后端已保证含音频，已按清晰度降序排列）
+// 视频格式：从后端返回的 formats 中获取，通常按画质排序
 const videoFormats = computed(() => {
     if (!props.video) return [];
-    // 优先使用后端返回的 formats（已是视频+音频格式）
     return props.video.formats || [];
 });
 
-// 纯音频格式（后端单独返回的 audio_formats 字段）
+// 纯音频格式列表
 const audioFormats = computed(() => {
     if (!props.video) return [];
     return props.video.audio_formats || [];
 });
 
-// Auto-select best format when video changes (must be after videoFormats declaration)
+// 监听视频数据变化，自动选中第一个最佳视频格式
 watch(() => props.video, (newVal) => {
     if (newVal && newVal.formats && newVal.formats.length > 0) {
         const vids = videoFormats.value;
@@ -155,6 +158,9 @@ watch(() => props.video, (newVal) => {
     error.value = '';
 }, { immediate: true });
 
+/**
+ * 格式化字节大小为可读的 KB/MB/GB
+ */
 const formatBytes = (bytes, decimals = 2) => {
     if (!+bytes) return '0 Bytes';
     const k = 1024;
@@ -164,6 +170,9 @@ const formatBytes = (bytes, decimals = 2) => {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
 
+/**
+ * 处理下载：调用 API 执行后台下载任务
+ */
 const handleDownload = async () => {
     if (!selectedFormat.value) return;
     
@@ -171,6 +180,7 @@ const handleDownload = async () => {
     error.value = '';
     
     try {
+        // 请求后端下载并触发浏览器保存对话框
         await api.downloadVideo(props.url, selectedFormat.value, isAudioOnly.value);
     } catch (err) {
         error.value = err.message || t.value.videoResult.errorDownloadFailed;

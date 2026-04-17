@@ -53,30 +53,39 @@
 import { ref } from 'vue';
 import { useI18n } from '../i18n';
 
+// 接收父组件传递的状态
 const props = defineProps({
-  loading: Boolean
+  loading: Boolean // 后端是否正在解析中
 });
 
+// 定义向父组件发送的事件
 const emit = defineEmits(['parse', 'clear']);
 
-const url = ref('');
-const localError = ref('');
-const { t } = useI18n();
+// 本地响应式变量
+const url = ref('');         // 输入框绑定的 URL 文本
+const localError = ref(''); // 本地校验错误信息
+const { t } = useI18n();     // 国际化文案引用
 
+/**
+ * 触发解析逻辑：进行基础校验后发送事件给父组件
+ */
 const handleParse = () => {
   if (!url.value.trim()) return;
   
-  const isValidUrl = url.value.startsWith('http://') || url.value.startsWith('https://') || url.value.includes('douyin') || url.value.includes('bilibili');
-  
+  // 基础长度校验
   if (url.value.trim().length < 5) {
       localError.value = t.value.app.errorInvalidUrl;
       return;
   }
   
   localError.value = '';
+  // 通知父组件开始解析该 URL
   emit('parse', url.value.trim());
 };
 
+/**
+ * 清除输入：清空文本框并通知父组件重置状态
+ */
 const clearInput = () => {
   url.value = '';
   localError.value = '';

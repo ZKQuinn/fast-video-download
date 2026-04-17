@@ -40,40 +40,54 @@ import FooterSection from './components/FooterSection.vue';
 import { api } from './api';
 
 const { t } = useI18n();
-const parsedVideo = ref(null);
-const currentUrl = ref('');
-const globalError = ref('');
-const loading = ref(false);
 
+// 响应式状态定义
+const parsedVideo = ref(null); // 解析后的视频数据对象
+const currentUrl = ref('');    // 当前正在处理的 URL
+const globalError = ref('');   // 全局错误提示文本
+const loading = ref(false);    // 是否处于解析/加载状态
+
+// 计算属性：是否显示解析结果面板
 const showResult = computed(() => parsedVideo.value !== null);
 
+/**
+ * 处理视频解析事件
+ * @param {string} url 用户输入的视频链接
+ */
 const handleParse = async (url) => {
+  // 重置状态
   globalError.value = '';
   parsedVideo.value = null;
   currentUrl.value = url;
   loading.value = true;
   
   try {
+    // 调用 API 接口进行后端解析
     const data = await api.parseVideo(url);
     
-    // Wait for Vue to finish any pending DOM updates before setting new data
+    // 等待 Vue 完成数据清理产生的 DOM 更新
     await nextTick();
     
+    // 设置新数据
     parsedVideo.value = data;
     
-    // Scroll to result after next render cycle
+    // 渲染完成后，平滑滚动到结果区域
     await nextTick();
     const resultEl = document.querySelector('.video-result');
     if (resultEl) {
       resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   } catch (err) {
+    // 捕获错误并显示，若无具体信息则显示默认错误
     globalError.value = err.message || t.value.app.defaultError;
   } finally {
     loading.value = false;
   }
 };
 
+/**
+ * 处理清除事件：清空所有解析状态回到初始首页
+ */
 const handleClear = () => {
   parsedVideo.value = null;
   globalError.value = '';
