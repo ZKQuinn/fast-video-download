@@ -5,16 +5,26 @@
 -->
 <template>
   <div class="app-container">
+    <!-- Background Decoration -->
+    <div class="bg-glow"></div>
+    
     <NavBar />
     
     <main>
       <HeroSection @parse="handleParse" @clear="handleClear" :loading="loading" />
       
       <div class="content-wrapper">
-        <div v-if="globalError" class="global-error glass-panel">
-          <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
-          {{ globalError }}
-        </div>
+        <transition name="fade">
+          <div v-if="globalError" class="global-error glass-panel">
+            <div class="error-icon">
+              <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            </div>
+            <div class="error-text">
+              {{ globalError }}
+            </div>
+            <button @click="globalError = ''" class="close-error">×</button>
+          </div>
+        </transition>
         
         <VideoResult 
           v-if="showResult" 
@@ -80,7 +90,7 @@ const handleParse = async (url) => {
     await nextTick();
     const resultEl = document.querySelector('.video-result');
     if (resultEl) {
-      resultEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   } catch (err) {
     // 捕获错误并显示，若无具体信息则显示默认错误
@@ -105,6 +115,21 @@ const handleClear = () => {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.bg-glow {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: -1;
+  background: 
+    radial-gradient(circle at 15% 15%, rgba(236, 72, 153, 0.08) 0%, transparent 40%),
+    radial-gradient(circle at 85% 85%, rgba(37, 99, 235, 0.08) 0%, transparent 40%);
 }
 
 main {
@@ -114,25 +139,53 @@ main {
 .content-wrapper {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 24px 80px;
   width: 100%;
 }
 
 .global-error {
   max-width: 800px;
   margin: 0 auto 40px auto;
-  padding: 20px;
-  color: #f87171;
+  padding: 16px 20px;
+  background: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.15);
   display: flex;
   align-items: center;
-  gap: 12px;
-  border-color: rgba(248, 113, 113, 0.2);
-  background: rgba(248, 113, 113, 0.05);
-  animation: slideDown 0.3s ease;
+  gap: 16px;
 }
 
-@keyframes slideDown {
-  from { opacity: 0; transform: translateY(-20px); }
-  to { opacity: 1; transform: translateY(0); }
+.error-icon {
+  color: #ef4444;
+  flex-shrink: 0;
+}
+
+.error-text {
+  flex: 1;
+  font-size: 0.95rem;
+}
+
+.close-error {
+  background: transparent;
+  border: none;
+  color: var(--color-foreground);
+  opacity: 0.5;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.close-error:hover {
+  opacity: 1;
+}
+
+/* Transitions */
+.fade-enter-active,
+.fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-20px);
 }
 </style>

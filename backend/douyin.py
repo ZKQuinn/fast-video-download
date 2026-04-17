@@ -72,38 +72,40 @@ class DouyinParser:
         self.max_retries = 3
 
     def parse(self, url: str) -> dict:
-        """解析抖音视频：1. 提取 URL -> 2. 跟随重定向 -> 3. 提取视频 ID -> 4. 获取元数据"""
+        """解析抖音视频：1. 提取 URL -> 2. 跟随重定向 -> 3. 提取视频 ID -> 4. 获取无水印数据"""
+        try:
+            share_url = self._extract_url(url)
+            resolved_url = self._resolve_redirect(share_url)
+            video_id = self._extract_video_id(resolved_url)
+            
+            # 使用带备选方案的获取逻辑：API 失败会自动尝试解析分享页 HTML
+            item_info = self._fetch_item_info(video_id, resolved_url)
+            return self._build_result(item_info, video_id)
+        except Exception as e:
+            logger.error(f"抖音专用解析失败: {e}")
+            raise
+
+    def download(self, url: str, mode: str = "video", progress_callback=None) -> dict:
+        """
+        专用下载逻辑：直连无水印地址，跳过 yt-dlp
+        """
         share_url = self._extract_url(url)
         resolved_url = self._resolve_redirect(share_url)
         video_id = self._extract_video_id(resolved_url)
-
         item_info = self._fetch_item_info(video_id, resolved_url)
-        return self._build_result(item_info, video_id)
-
-    def download(self, url: str, mode: str = "video") -> dict:
-        """
-        下载流程：解析链接信息，获取媒体直接地址，然后流式下载到本地
-        mode: 'video' (视频) 或 'audio' (音频)
-        """
-        share_url = self._extract_url(url)
-        resolved_url = self._resolve_redirect(share_url)
-        video_id = self._extract_video_id(resolved_url)
-
-        item_info = self._fetch_item_info(video_id, resolved_url)
+        
+        # 提取无水印地址 (playwm -> play)
         media_url = self._get_media_url(item_info, mode)
         title = item_info.get("desc") or f"douyin_{video_id}"
         
-        # 文件名合法化处理：移除特殊字符并限制长度
-        safe_title = re.sub(r'[\\/*?:"<>|\n\r\t#@]', "_", title).strip("_. ")[:60]
-        safe_title = re.sub(r'_+', '_', safe_title)
-        if not safe_title:
-            safe_title = f"douyin_{video_id}"
-
+        # 文件名清理
+        safe_title = re.sub(r'[\\/*?:"<>|\n\r\t#@]', "_", title).strip("_. ")[:60] or f"douyin_{video_id}"
         ext = ".mp4" if mode == "video" else ".mp3"
         filename = f"{safe_title}{ext}"
         filepath = self.download_dir / filename
 
-        self._download_file(media_url, filepath)
+        # 执行下载
+        self._download_with_progress(media_url, filepath, progress_callback)
 
         return {
             "filepath": str(filepath),
@@ -111,6 +113,30 @@ class DouyinParser:
             "title": title,
             "ext": ext.lstrip("."),
         }
+
+    def _download_with_progress(self, url: str, filepath: Path, progress_callback=None):
+        """带进度的文件下载"""
+        resp = self.session.get(url, stream=True, timeout=self.timeout)
+        resp.raise_for_status()
+        total = int(resp.headers.get('content-length', 0))
+        
+        downloaded = 0
+        with filepath.open("wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024*64):
+                if chunk:
+                    f.write(chunk)
+                    downloaded += len(chunk)
+                    if progress_callback and total > 0:
+                        progress_callback({
+                            "status": "downloading",
+                            "downloaded_bytes": downloaded,
+                            "total_bytes": total,
+                            "progress_percent": round((downloaded/total)*100, 2),
+                            "speed": 0 # 简单处理
+                        })
+        
+        if progress_callback:
+            progress_callback({"status": "finished", "progress_percent": 100})
 
     def _extract_url(self, text: str) -> str:
         match = _URL_PATTERN.search(text)

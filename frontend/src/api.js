@@ -9,7 +9,6 @@ const API_BASE = 'http://127.0.0.1:8000/api';
 export const api = {
     /**
      * 调用后端接口解析视频链接
-     * @param {string} url 
      */
     async parseVideo(url) {
         const response = await fetch(`${API_BASE}/parse`, {
@@ -31,8 +30,7 @@ export const api = {
     },
 
     /**
-     * 获取封面图代理链接（处理防盗链问题）
-     * @param {string} url 原始封面图 URL
+     * 获取封面图代理链接
      */
     getProxyUrl(url) {
         if (!url) return '';
@@ -40,23 +38,31 @@ export const api = {
     },
 
     /**
-     * 执行下载任务：改用原生浏览器下载方式，以直观显示进度条
-     * @param {string} url 视频链接
-     * @param {string} format_id 选择的画质/格式 ID
-     * @param {boolean} is_audio_only 是否仅下载音频
+     * 第一步：向后端申请准备视频（支持进度反馈）
      */
-    async downloadVideo(url, format_id, is_audio_only = false) {
-        // 构建带有参数的 GET 请求链接
-        const params = new URLSearchParams({
-            url: url,
-            format_id: format_id,
-            is_audio_only: is_audio_only
+    async prepareDownload(url, format_id, is_audio_only = false) {
+        const response = await fetch(`${API_BASE}/download/prepare`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url, format_id, is_audio_only })
         });
-        
-        const downloadUrl = `${API_BASE}/download?${params.toString()}`;
-        
-        // 直接通过浏览器地址跳转触发下载（后端返回 Content-Disposition: attachment）
-        // 这种方式能让浏览器下载管理器接管，从而看到实时的下载进度
-        window.location.href = downloadUrl;
+        if (!response.ok) throw new Error('Failed to start server download');
+        return await response.json(); // { task_id }
+    },
+
+    /**
+     * 第二步：轮询下载进度
+     */
+    async getTaskStatus(taskId) {
+        const response = await fetch(`${API_BASE}/task/status/${taskId}`);
+        if (!response.ok) return { status: 'failed', progress: 0 };
+        return await response.json();
+    },
+
+    /**
+     * 第三步：触发浏览器真正的文件下载
+     */
+    downloadFile(taskId) {
+        window.location.href = `${API_BASE}/download/fetch/${taskId}`;
     }
 };

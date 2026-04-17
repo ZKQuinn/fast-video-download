@@ -17,7 +17,7 @@ export const locales = {
     features: {
       f1: { title: "全网平台覆盖", desc: "基于强大的底层引擎，支持主流平台包括 YouTube, Bilibili, 抖音, X/Twitter 等，几乎覆盖全网。" },
       f2: { title: "安全且纯粹", desc: "所有解析均在服务端或本地进行。没有烦人的广告，没有隐藏的弹窗，给你最极客的下载体验。" },
-      f3: { title: "多画质自由选", desc: "从 4K 超清到 480P 标清，或是纯音频提取，自由掌控你的下载需求。" }
+      f3: { title: "多画质自由选", desc: "从 1080P 超清到 480P 标清，或是纯音频提取，自由掌控你的下载需求。" }
     },
     platforms: {
       title: "支持的平台",
@@ -39,10 +39,15 @@ export const locales = {
       unknown: "未知",
       videoTitlePlaceholder: "未知标题",
       videoFormatsTitle: "画质选择 (已自动融合音频)",
-      audioFormatsTitle: "纯音频提取",
       downloadButton: "下载此格式",
       downloading: "正在下载...",
+      downloadingVideo: "正在下载视频...",
+      downloadingVideoStep: "(1/2) 正在下载视频轨道...",
+      downloadingAudioStep: "(2/2) 正在下载音频轨道...",
       errorDownloadFailed: "下载失败：",
+      preparingOnServer: "服务器正在为您处理...",
+      merging: "正在合并视频与音频轨道...",
+      ready: "准备就绪，开始为您传输文件...",
       resUnit: "p",
       auto: "自动",
       containsAudio: "🔊 含音频",
@@ -70,7 +75,7 @@ export const locales = {
     features: {
       f1: { title: "Global Platform Coverage", desc: "Powered by a robust core engine, supporting YouTube, Bilibili, Douyin, X/Twitter and more." },
       f2: { title: "Safe & Pure", desc: "All parsing runs securely either server-side or locally. No annoying ads, no pop-ups." },
-      f3: { title: "Resolution Freedom", desc: "From 4K ultra-HD to 480P or audio-only extraction, take full control of your downloads." }
+      f3: { title: "Resolution Freedom", desc: "From Ultra-HD to 480P or audio-only extraction, take full control of your downloads." }
     },
     platforms: {
       title: "Supported Platforms",
@@ -92,10 +97,15 @@ export const locales = {
       unknown: "Unknown",
       videoTitlePlaceholder: "Unknown Title",
       videoFormatsTitle: "Video Resolutions (Audio Merged)",
-      audioFormatsTitle: "Audio Only Extraction",
       downloadButton: "Download",
       downloading: "Downloading...",
+      downloadingVideo: "Downloading Video...",
+      downloadingVideoStep: "Step 1/2: Downloading Video...",
+      downloadingAudioStep: "Step 2/2: Downloading Audio...",
       errorDownloadFailed: "Download failed: ",
+      preparingOnServer: "Processing on server...",
+      merging: "Optimizing & Merging Media...",
+      ready: "Ready, starting transfer...",
       resUnit: "p",
       auto: "Auto",
       containsAudio: "🔊 Has Audio",

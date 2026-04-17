@@ -21,3 +21,8 @@ env/
 
 # Downloaded files
 backend/downloads/
+
+# AI Artifacts & Tests
+artifacts/
+backend/test_results.json
+backend/test_links.py

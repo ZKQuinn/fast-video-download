@@ -79,6 +79,8 @@ async def parse_video(request: ParseRequest):
         # 使用正则从可能的包含文字的消息中提取 URL
         match = re.search(r"https?://[^\s]+", request.url)
         url = match.group(0) if match else request.url
+        if url.endswith('】'):
+            url = url.rstrip('】')
         print(f"正在解析链接: {url}")
         
         # 抖音链接特殊处理
@@ -101,120 +103,147 @@ async def parse_video(request: ParseRequest):
          traceback.print_exc()
          raise HTTPException(status_code=500, detail=str(e))
 
+# 全局任务状态字典
+# 格式: { task_id: { "progress": 0, "status": "preparing", "filename": "" } }
+task_status = {}
+
+@app.get("/api/task/status/{task_id}")
+async def get_task_status(task_id: str):
+    """查询下载任务的实时进度"""
+    status = task_status.get(task_id)
+    if not status:
+        return {"progress": 0, "status": "not_found"}
+    return status
+
 # 接口 3: 执行下载并流化返回文件
 # 支持 GET 和 POST。GET 用于浏览器原生下载显示进度，POST 保持兼容性。
-@app.api_route("/api/download", methods=["GET", "POST"])
-async def download_video(
-    request: Request,
-    url: Optional[str] = Query(None),
-    format_id: Optional[str] = Query("best"),
-    is_audio_only: Optional[bool] = Query(False)
-):
+# 全局变量：存储下载任务进度
+download_tasks = {}
+
+# 接口 3: 下载准备任务 (创建下载任务并后台执行)
+@app.post("/api/download/prepare")
+async def prepare_download(request: Request):
     try:
-        if request.method == "POST":
-            try:
-                body = await request.json()
-                if not url: url = body.get("url")
-                if format_id == "best": format_id = body.get("format_id", "best")
-                if not is_audio_only: is_audio_only = body.get("is_audio_only", False)
-            except: pass
+        body = await request.json()
+        url = body.get("url")
+        format_id = body.get("format_id", "best")
+        is_audio_only = body.get("is_audio_only", False)
 
         if not url:
             raise HTTPException(status_code=400, detail="必须提供视频链接 URL")
 
+        # 预先清理 URL，处理带有标题的分享链接
+        import re
         match = re.search(r"https?://[^\s]+", url)
         target_url = match.group(0) if match else url
-        
-        # 1. 快速获取视频元数据（不下载）
-        downloader = VideoDownloader()
-        # 这里调用我们定义的解析方法获取基础信息
-        video_data = await asyncio.to_thread(downloader.parse_video, target_url)
-        title = video_data.get("title", "video").replace("/", "_").replace("\\", "_")
-        
-        # 从 formats 中尝试获取预览时的大小
-        file_size = None
-        ext = "mp4"
-        
-        # 尝试匹配选中的 format_id 获取精确大小和后缀
-        all_formats = (video_data.get("formats", []) or []) + (video_data.get("audio_formats", []) or [])
-        for f in all_formats:
-            if f.get("format_id") == format_id:
-                file_size = f.get("filesize_raw")
-                ext = f.get("ext", "mp4")
-                break
-        
-        if is_audio_only: ext = "mp3"
-        filename = f"{title}.{ext}"
-        
-        from urllib.parse import quote
-        encoded_filename = quote(filename)
+        if target_url.endswith('】'): # 处理 B 站分享链接结尾多出的括号
+             target_url = target_url.rstrip('】')
 
-        # 2. 准备流式子进程
-        import subprocess
-        async def stream_generator():
-            # 针对不同平台优化参数
-            cmd = [
-                "yt-dlp",
-                "-f", format_id,
-                "-o", "-",  # 关键：输出到 stdout
-                "--quiet",
-                "--no-warnings",
-            ]
-            
-            if downloader.has_ffmpeg:
-                cmd.extend(["--ffmpeg-location", downloader.ffmpeg_path])
-                # 如果是合并音视频，强制开启流式封装格式 (Fragmented MP4)
-                cmd.extend(["--postprocessor-args", "merger:-movflags frag_keyframe+empty_moov+default_base_moof"])
-                
-            cmd.append(target_url)
-
-            # 配置环境变量以找到 ffmpeg
-            env = os.environ.copy()
-            if downloader.has_ffmpeg:
-                path_sep = ";" if os.name == "nt" else ":"
-                env["PATH"] = downloader.ffmpeg_path + path_sep + env.get("PATH", "")
-
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env
-            )
-            
-            print(f"DEBUG: 开启实时流式下载管道: {filename}")
-            
-            try:
-                while True:
-                    chunk = await process.stdout.read(1024 * 128) # 128KB 缓冲区
-                    if not chunk:
-                        break
-                    yield chunk
-            except Exception as e:
-                print(f"DEBUG: 流传输中断: {e}")
-            finally:
-                if process.returncode is None:
-                    try: process.terminate()
-                    except: pass
-                await process.wait()
-
-        # 3. 立即返回响应头
-        headers = {
-            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-            "X-Content-Type-Options": "nosniff",
-            "Content-Type": "application/octet-stream"
+        # 生成唯一的任务 ID
+        import uuid
+        task_id = str(uuid.uuid4())
+        task_status[task_id] = {
+            "progress": 0, 
+            "status": "downloading", 
+            "speed": "0 KB/s",
+            "filename": "",
+            "filepath": ""
         }
-        if file_size:
-            headers["Content-Length"] = str(file_size)
 
-        return StreamingResponse(
-            stream_generator(),
-            headers=headers
-        )
+        # 定义进度回调
+        def progress_callback(data):
+            if task_id in task_status:
+                task_status[task_id]["progress"] = data["progress_percent"]
+                task_status[task_id]["download_type"] = data.get("download_type", "video")
+                if data["status"] == "finished":
+                    task_status[task_id]["status"] = "merging"
+                else:
+                    task_status[task_id]["status"] = "downloading"
+                
+                if data.get("speed"):
+                    speed_mb = data["speed"] / (1024 * 1024)
+                    task_status[task_id]["speed"] = f"{speed_mb:.1f} MB/s"
+
+        # 在后台线程中启动下载
+        async def run_download_task():
+            try:
+                # 抖音链接特殊路由：不走 yt-dlp
+                if "douyin.com" in target_url:
+                    parser = DouyinParser()
+                    result = await asyncio.to_thread(
+                        parser.download,
+                        target_url,
+                        "video",
+                        progress_callback
+                    )
+                else:
+                    # 通用平台
+                    downloader = VideoDownloader()
+                    result = await asyncio.to_thread(
+                        downloader.download_video, 
+                        target_url, 
+                        format_id, 
+                        is_audio_only, 
+                        progress_callback
+                    )
+                
+                if result and os.path.exists(result["filepath"]):
+                    task_status[task_id]["status"] = "completed"
+                    task_status[task_id]["filepath"] = result["filepath"]
+                    task_status[task_id]["filename"] = os.path.basename(result["filepath"])
+                    task_status[task_id]["progress"] = 100
+                else:
+                    task_status[task_id]["status"] = "failed"
+            except Exception as e:
+                print(f"任务 {task_id} 失败: {e}")
+                task_status[task_id]["status"] = "failed"
+                task_status[task_id]["error"] = str(e)
+
+        # 启动后台任务
+        asyncio.create_task(run_download_task())
+        
+        return {"task_id": task_id}
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"下载启动失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 接口 4: 获取准备好的文件
+@app.get("/api/download/fetch/{task_id}")
+async def fetch_download(task_id: str):
+    status = task_status.get(task_id)
+    if not status or status["status"] != "completed":
+        raise HTTPException(status_code=400, detail="任务未完成或不存在")
+
+    file_path = status["filepath"]
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="文件已过期或丢失")
+
+    filename = status["filename"]
+    file_size = os.path.getsize(file_path)
+    
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
+
+    async def file_streamer():
+        try:
+            with open(file_path, "rb") as f:
+                while chunk := f.read(1024 * 1024):
+                    yield chunk
+        finally:
+            # 传输完成后清理，并移除任务追踪
+            if os.path.exists(file_path):
+                 try: os.unlink(file_path)
+                 except: pass
+            if task_id in task_status:
+                 del task_status[task_id]
+
+    headers = {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        "Content-Length": str(file_size),
+        "Content-Type": "application/octet-stream"
+    }
+
+    return StreamingResponse(file_streamer(), headers=headers)
 
 # 接口 4: 封面图代理（绕过防盗链）
 @app.get("/api/proxy/thumbnail")

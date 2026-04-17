@@ -1,31 +1,40 @@
 :root {
-  /* 背景层级 */
-  --bg-primary: #0A0A0F;       /* 最深层背景 */
-  --bg-secondary: #12121A;     /* 卡片背景 */
-  --bg-tertiary: #1A1A2E;      /* 输入框/悬浮背景 */
+  /* Core Colors - OLED Dark Mode */
+  --color-background: #0F172A;
+  --color-foreground: #FFFFFF;
+  --color-primary: #EC4899;
+  --color-primary-glow: rgba(236, 72, 153, 0.4);
+  --color-secondary: #DB2777;
+  --color-accent: #2563EB;
+  --color-accent-glow: rgba(37, 99, 235, 0.3);
+  --color-muted: #1E293B;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-destructive: #EF4444;
   
-  /* 渐变重点 */
-  --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --gradient-accent: linear-gradient(135deg, #f093fb 0%, #f5576c 50%, #4facfe 100%);
-  --gradient-cta: linear-gradient(135deg, #667eea 0%, #f093fb 100%);
+  /* Background Layers */
+  --bg-primary: #020617;        /* Deeper Black */
+  --bg-secondary: #0F172A;      /* Surface */
+  --bg-tertiary: #1E293B;       /* Input/Hover */
   
-  /* 文本 */
-  --text-primary: #FFFFFF;
-  --text-secondary: rgba(255, 255, 255, 0.7);
-  --text-muted: rgba(255, 255, 255, 0.4);
+  /* Nav & Glass */
+  --glass-bg: rgba(15, 23, 42, 0.6);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --glass-blur: blur(16px);
   
-  /* 强调色 */
-  --accent-purple: #667eea;
-  --accent-pink: #f093fb;
-  --accent-blue: #4facfe;
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  --gradient-accent: linear-gradient(135deg, #2563EB 0%, #7C3AED 100%);
+  --gradient-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 100%);
   
-  /* 边框 & 分割 */
-  --border-subtle: rgba(255, 255, 255, 0.06);
-  --border-hover: rgba(255, 255, 255, 0.12);
+  /* Spacing & Radius */
+  --radius-xl: 24px;
+  --radius-lg: 16px;
+  --radius-md: 12px;
+  --radius-sm: 8px;
   
-  /* 毛玻璃 */
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  /* Shadows */
+  --shadow-primary: 0 0 20px var(--color-primary-glow);
+  --shadow-accent: 0 0 20px var(--color-accent-glow);
 }
 
 * {
@@ -35,47 +44,71 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background-color: var(--bg-primary);
-  color: var(--text-primary);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(236, 72, 153, 0.15) 0, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(37, 99, 235, 0.15) 0, transparent 50%);
+  color: var(--color-foreground);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
 }
 
-a {
-  color: inherit;
-  text-decoration: none;
+/* Base Elements */
+h1, h2, h3 {
+  letter-spacing: -0.02em;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 700;
-  line-height: 1.2;
+button, input {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-button {
-  cursor: pointer;
-  font-family: inherit;
-  border: none;
-  background: none;
-}
-
-input {
-  font-family: inherit;
-}
-
-/* Utilities */
+/* Premium Utilities */
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 1px solid var(--glass-border);
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .text-gradient {
-  background: var(--gradient-accent);
+  background: var(--gradient-primary);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
+  display: inline-block;
+}
+
+.btn-primary {
+  background: var(--gradient-primary);
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  box-shadow: var(--shadow-primary);
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.1);
+  box-shadow: 0 0 30px var(--color-primary-glow);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  transition: border-color 0.2s ease;
+}
+
+.card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
 }

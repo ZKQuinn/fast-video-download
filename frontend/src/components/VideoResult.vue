@@ -1,105 +1,109 @@
 <template>
   <div class="video-result glass-panel" v-if="video && video.formats">
+    <!--Progress Status Overlay -->
+    <transition name="fade">
+      <div v-if="taskProgress.show" class="task-overlay">
+         <div class="task-card glass-panel">
+            <div class="task-header">
+               <div class="spinner-container">
+                  <div v-if="taskProgress.status !== 'completed' && taskProgress.status !== 'failed'" class="premium-loader"></div>
+                  <div v-else-if="taskProgress.status === 'completed'" class="success-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <div v-else-if="taskProgress.status === 'failed'" class="error-icon">
+                    <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                  </div>
+               </div>
+               <div class="task-title-group">
+                  <h3>{{ taskProgress.statusText }}</h3>
+                  <p class="task-filename" v-if="video.title">{{ video.title }}</p>
+               </div>
+            </div>
+            
+            <div class="task-body" v-if="taskProgress.status !== 'failed'">
+               <div class="progress-bar-container">
+                  <div class="progress-bar-fill" :style="{ width: taskProgress.percent + '%' }"></div>
+               </div>
+               <div class="progress-stats">
+                  <span class="percent">{{ taskProgress.percent }}%</span>
+                  <span class="speed" v-if="taskProgress.speed">{{ taskProgress.speed }}</span>
+               </div>
+            </div>
+            
+            <div class="task-error" v-if="taskProgress.status === 'failed'">
+               <p>{{ taskProgress.errorMsg }}</p>
+               <button class="btn-secondary btn-small" @click="taskProgress.show = false">Close</button>
+            </div>
+         </div>
+      </div>
+    </transition>
+
     <div class="video-header">
-       <div class="thumbnail">
-           <img :src="thumbnailUrl" :alt="video.title" v-if="thumbnailUrl" />
-           <div class="duration" v-if="video.duration_string">{{ video.duration_string }}</div>
+       <div class="thumbnail-wrapper">
+           <img :src="thumbnailUrl" :alt="video.title" v-if="thumbnailUrl" class="thumbnail-img" />
+           <div class="duration-badge" v-if="video.duration_string">{{ video.duration_string }}</div>
        </div>
        <div class="video-info">
-           <h2 class="title">{{ video.title || t.videoResult.videoTitlePlaceholder }}</h2>
-           <div class="meta">
-               <span class="author" v-if="video.uploader">
-                   <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-                   {{ video.uploader }}
-               </span>
-               <span class="platform">
-                   {{ t.videoResult.platform }} <strong>{{ video.platform || t.videoResult.unknown }}</strong>
-               </span>
+           <h2 class="video-title">{{ video.title || t.videoResult.videoTitlePlaceholder }}</h2>
+           <div class="meta-row">
+               <div class="meta-item uploader" v-if="video.uploader">
+                   <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                   <span>{{ video.uploader }}</span>
+               </div>
+               <div class="meta-item platform">
+                   <span class="platform-tag">{{ video.platform || t.videoResult.unknown }}</span>
+               </div>
            </div>
        </div>
     </div>
 
     <div class="formats-section">
-        <h3>{{ t.videoResult.resolution }}</h3>
+        <h3 class="section-title">
+          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line></svg>
+          {{ t.videoResult.videoFormatsTitle }}
+        </h3>
         
-        <div class="format-groups">
-            <!-- Video Formats -->
-            <div class="format-group" v-if="videoFormats.length">
-                <h4 class="group-title">
-                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>
-                  {{ t.videoResult.videoFormatsTitle }}
-                </h4>
-                <div class="format-list">
-                    <label 
-                      v-for="fmt in videoFormats" 
-                      :key="fmt.format_id"
-                      class="format-item"
-                      :class="{ active: selectedFormat === fmt.format_id }"
-                    >
-                        <input 
-                          type="radio" 
-                          name="format" 
-                          :value="fmt.format_id" 
-                          v-model="selectedFormat"
-                          @change="isAudioOnly = false"
-                        />
-                        <div class="format-details">
-                            <span class="resolution">{{ fmt.height && fmt.height < 9999 ? fmt.height + t.videoResult.resUnit : t.videoResult.auto }}</span>
-                            <span class="ext">{{ fmt.ext?.toUpperCase() }}</span>
-                            <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features"><small>{{ t.videoResult.containsAudio }}</small></span>
-                        </div>
-                    </label>
+        <div class="format-grid">
+            <label 
+              v-for="fmt in videoFormats" 
+              :key="fmt.format_id"
+              class="format-card"
+              :class="{ active: selectedFormat === fmt.format_id }"
+            >
+                <input 
+                  type="radio" 
+                  name="format" 
+                  :value="fmt.format_id" 
+                  v-model="selectedFormat"
+                />
+                <div class="format-content">
+                    <div class="res-badge">{{ fmt.height && fmt.height < 9999 ? fmt.height + t.videoResult.resUnit : t.videoResult.auto }}</div>
+                    <div class="format-main">
+                      <span class="ext-tag">{{ fmt.ext?.toUpperCase() }}</span>
+                      <span class="filesize" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
+                    </div>
                 </div>
-            </div>
-
-            <!-- Audio Formats -->
-            <div class="format-group" v-if="audioFormats.length">
-                <h4 class="group-title audio-title">
-                  <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"></path><circle cx="6" cy="18" r="3"></circle><circle cx="18" cy="16" r="3"></circle></svg>
-                  {{ t.videoResult.audioFormatsTitle }}
-                </h4>
-                <div class="format-list">
-                    <label 
-                      v-for="fmt in audioFormats" 
-                      :key="fmt.format_id"
-                      class="format-item"
-                      :class="{ active: selectedFormat === fmt.format_id }"
-                    >
-                        <input 
-                          type="radio" 
-                          name="format" 
-                          :value="fmt.format_id" 
-                          v-model="selectedFormat"
-                          @change="isAudioOnly = true"
-                        />
-                        <div class="format-details">
-                            <span class="resolution">{{ fmt.ext?.toUpperCase() }}</span>
-                            <span class="ext">{{ fmt.abr ? Math.round(fmt.abr) + ' kbps' : t.videoResult.auto }}</span>
-                            <span class="size" v-if="fmt.filesize">{{ formatBytes(fmt.filesize) }}</span>
-                            <span class="features audio-badge"><small>{{ t.videoResult.audioOnly }}</small></span>
-                        </div>
-                    </label>
+                <div class="check-mark">
+                   <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
                 </div>
-            </div>
+            </label>
         </div>
         
         <div class="actions">
-            <button class="btn-download" @click="handleDownload" :disabled="downloading || !selectedFormat">
-                <span class="icon">
-                    <svg v-if="!downloading" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    <svg v-else class="spin" viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"></line><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"></line></svg>
-                </span>
-                {{ downloading ? t.videoResult.downloading : t.videoResult.downloadButton }}
+            <button class="btn-primary btn-large download-trigger" @click="handleDownload" :disabled="taskProgress.show || !selectedFormat">
+                <svg viewBox="0 0 24 24" width="22" height="22" stroke="currentColor" stroke-width="2.5" fill="none" class="download-icon"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>{{ t.videoResult.downloadButton }}</span>
             </button>
-            <div class="error-msg" v-if="error">{{ error }}</div>
+            <transition name="fade">
+              <div class="error-msg" v-if="error">{{ error }}</div>
+            </transition>
         </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, reactive } from 'vue';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 
@@ -119,36 +123,35 @@ const props = defineProps({
 });
 
 // UI 状态变量
-const selectedFormat = ref(''); // 用户选中的格式 ID
-const isAudioOnly = ref(false); // 是否当前选择的是纯音频
-const downloading = ref(false); // 下载状态
-const error = ref('');           // 局部下载错误
+const selectedFormat = ref(''); 
+const error = ref('');
 
-// 处理封面图的计算属性：通过后端代理绕过防盗链
+// 任务进度追踪
+const taskProgress = reactive({
+    show: false,
+    percent: 0,
+    statusText: '',
+    speed: '',
+    status: 'idle',
+    errorMsg: ''
+});
+
+// 处理封面图的计算属性
 const thumbnailUrl = computed(() => {
     if (!props.video || !props.video.thumbnail) return '';
     return api.getProxyUrl(props.video.thumbnail);
 });
 
-// 视频格式：从后端返回的 formats 中获取，通常按画质排序
 const videoFormats = computed(() => {
     if (!props.video) return [];
     return props.video.formats || [];
 });
 
-// 纯音频格式列表
-const audioFormats = computed(() => {
-    if (!props.video) return [];
-    return props.video.audio_formats || [];
-});
-
-// 监听视频数据变化，自动选中第一个最佳视频格式
 watch(() => props.video, (newVal) => {
     if (newVal && newVal.formats && newVal.formats.length > 0) {
         const vids = videoFormats.value;
         if (vids.length > 0) {
             selectedFormat.value = vids[0].format_id;
-            isAudioOnly.value = false;
         } else if (newVal.formats.length > 0) {
             selectedFormat.value = newVal.formats[0].format_id;
         }
@@ -158,9 +161,6 @@ watch(() => props.video, (newVal) => {
     error.value = '';
 }, { immediate: true });
 
-/**
- * 格式化字节大小为可读的 KB/MB/GB
- */
 const formatBytes = (bytes, decimals = 2) => {
     if (!+bytes) return '0 Bytes';
     const k = 1024;
@@ -171,284 +171,389 @@ const formatBytes = (bytes, decimals = 2) => {
 };
 
 /**
- * 处理下载：调用 API 执行后台下载任务
+ * 处理下载：三阶段流程 (Prepare -> Status -> Fetch)
  */
 const handleDownload = async () => {
     if (!selectedFormat.value) return;
     
-    downloading.value = true;
     error.value = '';
+    taskProgress.show = true;
+    taskProgress.status = 'preparing';
+    taskProgress.percent = 0;
+    taskProgress.statusText = t.value.videoResult.preparingOnServer;
+    taskProgress.speed = '';
     
     try {
-        // 请求后端下载并触发浏览器保存对话框
-        await api.downloadVideo(props.url, selectedFormat.value, isAudioOnly.value);
+        // 1. 创建任务
+        const { task_id } = await api.prepareDownload(props.url, selectedFormat.value, false);
+        
+        // 2. 开始轮询
+        const poll = async () => {
+            try {
+                const data = await api.getTaskStatus(task_id);
+                taskProgress.status = data.status;
+                taskProgress.percent = Math.floor(data.progress || 0);
+                taskProgress.speed = data.speed || '';
+                
+                if (data.status === 'downloading') {
+                    taskProgress.statusText = data.download_type === 'audio' 
+                        ? t.value.videoResult.downloadingAudioStep 
+                        : t.value.videoResult.downloadingVideoStep;
+                } else if (data.status === 'merging') {
+                    taskProgress.statusText = t.value.videoResult.merging;
+                    taskProgress.percent = 99;
+                } else if (data.status === 'completed') {
+                    taskProgress.statusText = t.value.videoResult.ready;
+                    taskProgress.percent = 100;
+                    api.downloadFile(task_id);
+                    setTimeout(() => { taskProgress.show = false; }, 3000);
+                    return;
+                } else if (data.status === 'failed') {
+                    taskProgress.status = 'failed';
+                    taskProgress.errorMsg = data.error || 'Task failed';
+                    return;
+                }
+                setTimeout(poll, 1500);
+            } catch (e) {
+                taskProgress.status = 'failed';
+                taskProgress.errorMsg = 'Polling failed: ' + e.message;
+            }
+        };
+        await poll();
     } catch (err) {
+        taskProgress.status = 'failed';
+        taskProgress.errorMsg = err.message;
         error.value = err.message || t.value.videoResult.errorDownloadFailed;
-    } finally {
-        downloading.value = false;
     }
 };
 </script>
 
 <style scoped>
 .video-result {
-  max-width: 800px;
-  margin: 0 auto 40px auto;
+  max-width: 900px;
+  margin: 0 auto;
+  position: relative;
   overflow: hidden;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
-  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+  animation: slideUp 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes slideUp {
-  from { opacity: 0; transform: translateY(40px); }
+  from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Task Overlay */
+.task-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(20px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 32px;
+}
+
+.task-card {
+  width: 100%;
+  max-width: 480px;
+  padding: 40px;
+  text-align: left;
+  border-radius: 24px;
+}
+
+.task-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  margin-bottom: 32px;
+}
+
+.premium-loader {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(255, 255, 255, 0.1);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.success-icon, .error-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #fff;
+}
+
+.success-icon { background: #10b981; }
+.error-icon { background: #ef4444; }
+
+.task-title-group h3 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #fff;
+}
+
+.task-filename {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.progress-bar-container {
+  height: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 100px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--gradient-primary);
+  transition: width 0.4s cubic-bezier(0.1, 0.5, 0.1, 1);
+  box-shadow: 0 0 15px var(--color-primary-glow);
+}
+
+.progress-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Video Header */
 .video-header {
   display: flex;
-  padding: 24px;
-  gap: 24px;
-  border-bottom: 1px solid var(--border-subtle);
-  background: rgba(0,0,0,0.2);
+  padding: 32px;
+  gap: 32px;
+  background: rgba(255, 255, 255, 0.02);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
-.thumbnail {
+.thumbnail-wrapper {
   position: relative;
-  width: 280px;
-  height: 158px;
-  border-radius: 12px;
+  width: 320px;
+  aspect-ratio: 16/9;
+  border-radius: 16px;
   overflow: hidden;
   flex-shrink: 0;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
-.thumbnail img {
+.thumbnail-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transition: transform 0.3s ease;
 }
 
-.duration {
+.duration-badge {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  font-weight: 600;
+  bottom: 12px;
+  right: 12px;
+  background: rgba(0, 0, 0, 0.85);
   backdrop-filter: blur(4px);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
 }
 
 .video-info {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  flex: 1;
 }
 
-.title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  line-height: 1.4;
+.video-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.35;
   margin-bottom: 16px;
-  color: var(--text-primary);
+  color: #fff;
   display: -webkit-box;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-.meta {
+.meta-row {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 0.95rem;
+  gap: 16px;
+  align-items: center;
 }
 
-.author {
+.meta-item {
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.formats-section {
-  padding: 24px;
-}
-
-.formats-section h3 {
-  font-size: 1.1rem;
-  margin-bottom: 20px;
-  color: var(--text-primary);
-}
-
-.format-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-  margin-bottom: 32px;
-}
-
-.group-title {
   font-size: 0.95rem;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.platform-tag {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 2px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Formats */
+.formats-section {
+  padding: 32px;
+}
+
+.section-title {
+  font-size: 1.15rem;
+  margin-bottom: 24px;
+  color: #fff;
   display: flex;
   align-items: center;
-  gap: 8px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  gap: 10px;
 }
 
-.audio-title {
-  color: #a78bfa;
-  margin-top: 8px;
-  padding-top: 20px;
-  border-top: 1px solid var(--border-subtle);
-}
-
-.audio-badge {
-  color: #a78bfa !important;
-}
-
-.format-list {
+.format-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
+  margin-bottom: 40px;
 }
 
-.format-item {
-  display: block;
+.format-card {
+  position: relative;
   cursor: pointer;
 }
 
-.format-item input {
-  display: none;
-}
+.format-card input { display: none; }
 
-.format-details {
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 12px 16px;
+.format-content {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 16px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  background: rgba(255, 255, 255, 0.02);
+  gap: 8px;
+}
+
+.res-badge {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.format-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ext-tag {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.filesize {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.check-mark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  background: var(--color-primary);
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #fff;
+  opacity: 0;
+  transform: scale(0.5);
   transition: all 0.2s ease;
 }
 
-.format-item:hover .format-details {
-  border-color: var(--border-hover);
-  background: rgba(255, 255, 255, 0.05);
+.format-card:hover .format-content {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
-.format-item.active .format-details {
-  border-color: var(--accent-purple);
-  background: rgba(102, 126, 234, 0.1);
-  box-shadow: inset 0 0 0 1px var(--accent-purple), 0 4px 12px rgba(102, 126, 234, 0.2);
+.format-card.active .format-content {
+  background: rgba(236, 72, 153, 0.05);
+  border-color: var(--color-primary);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
 }
 
-.resolution {
-  font-weight: 600;
-  font-size: 1rem;
-  color: var(--text-primary);
-}
-
-.ext {
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  text-transform: uppercase;
-}
-
-.size {
-  color: var(--accent-blue);
-  font-size: 0.85rem;
-  font-weight: 500;
-}
-
-.features {
-  margin-top: 4px;
-  color: #4ade80;
-}
-.features.muted {
-  color: var(--text-muted);
+.format-card.active .check-mark {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .actions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 20px;
 }
 
-.btn-download {
+.download-trigger {
   width: 100%;
-  max-width: 300px;
-  background: var(--text-primary);
-  color: var(--bg-primary);
-  font-weight: 600;
-  font-size: 1.1rem;
-  padding: 16px;
-  border-radius: 14px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  max-width: 320px;
 }
 
-.btn-download:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 10px 30px rgba(255, 255, 255, 0.2);
-  background: var(--gradient-cta);
-  color: white;
-}
-
-.btn-download:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.btn-download:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  background: rgba(255,255,255,0.1);
-  color: var(--text-secondary);
-}
-
-.spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  100% { transform: rotate(360deg); }
+.download-icon {
+  margin-right: 8px;
 }
 
 .error-msg {
-  color: #f87171;
-  font-size: 0.9rem;
-  background: rgba(248, 113, 113, 0.1);
-  padding: 12px 16px;
-  border-radius: 8px;
-  border: 1px solid rgba(248, 113, 113, 0.2);
+  color: #ef4444;
+  font-size: 0.95rem;
+  padding: 12px 20px;
+  background: rgba(239, 68, 68, 0.05);
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.1);
 }
 
-/* 响应式 */
 @media (max-width: 768px) {
   .video-header {
     flex-direction: column;
-    padding: 16px;
+    padding: 24px;
+    gap: 24px;
   }
-  .thumbnail {
+  
+  .thumbnail-wrapper {
     width: 100%;
-    height: auto;
-    aspect-ratio: 16/9;
   }
-  .formats-section {
-    padding: 16px;
-  }
-  .btn-download {
-    max-width: 100%;
+  
+  .video-title {
+    font-size: 1.25rem;
   }
 }
+
+/* Transitions */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.3s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
 </style>

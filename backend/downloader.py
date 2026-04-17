@@ -3,6 +3,7 @@ import re
 import shutil
 import yt_dlp
 from typing import Optional
+from urllib.parse import urlparse
 
 
 def _find_ffmpeg_path() -> Optional[str]:
@@ -26,6 +27,27 @@ class VideoDownloader:
         os.makedirs(self.DOWNLOAD_DIR, exist_ok=True)
         self.ffmpeg_path = _find_ffmpeg_path()
         self.has_ffmpeg = self.ffmpeg_path is not None
+        
+        # 核心通用配置：初始请求头（不包含 Referer，后续动态注入）
+        self.common_ytdl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+            }
+        }
+
+    def _get_referer(self, url: str) -> str:
+        """根据 URL 提取合适的 Referer"""
+        try:
+            parsed = urlparse(url)
+            if not parsed.netloc:
+                return "https://www.douyin.com/"
+            return f"https://{parsed.netloc}/"
+        except Exception:
+            return "https://www.douyin.com/"
 
     @staticmethod
     def _sanitize_filename(name: str) -> str:
@@ -53,9 +75,20 @@ class VideoDownloader:
 
     def parse_video(self, url: str) -> dict:
         """解析视频信息，不下载文件（优化速度）"""
-        ydl_opts = {
-            "quiet": True,
-            "no_warnings": True,
+        # 预操作：从可能包含文字的粘贴内容中提取真实 URL
+        import re
+        url_match = re.search(r"https?://[^\s]+", url)
+        if url_match:
+            url = url_match.group(0)
+
+        # 动态设置 Referer
+        referer = self._get_referer(url)
+        
+        ydl_opts = self.common_ytdl_opts.copy()
+        ydl_opts['http_headers'] = self.common_ytdl_opts['http_headers'].copy()
+        ydl_opts['http_headers']['Referer'] = referer
+        
+        ydl_opts.update({
             "extract_flat": False,
             "noplaylist": True,
             # 优化：跳过章节/评论/关系等非必要信息
@@ -68,7 +101,7 @@ class VideoDownloader:
             "extractor_args": {
                 "youtube": {"skip": ["hls", "dash"]},
             },
-        }
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -128,25 +161,27 @@ class VideoDownloader:
 
             if has_video:
                 # --- 视频格式处理 ---
-                if not height:
-                    continue  # 跳过无分辨率信息的流
+                # 如果没有解析出高度，给一个默认值 0 避免失败，但在标签中标记为 Auto
+                actual_height = height or 0
 
                 # 去重 key：同分辨率+格式只取一个
-                key = (height, ext)
+                key = (actual_height, ext)
                 if key in seen_video_keys:
                     continue
                 seen_video_keys.add(key)
 
+                resolution_label = f"{actual_height}p" if actual_height > 0 else "Auto"
+
                 if has_audio:
                     # 已包含音频，直接可用
-                    label = f"{height}p · {ext.upper()}"
+                    label = f"{resolution_label} · {ext.upper()}"
                     if size_label:
                         label += f" · {size_label}"
                     download_format_id = format_id
                     audio_badge = True
                 else:
                     # 仅视频流，下载时需要合并最佳音频
-                    label = f"{height}p · {ext.upper()}"
+                    label = f"{resolution_label} · {ext.upper()}"
                     if size_label:
                         label += f" · {size_label}"
                     # 使用 yt-dlp 合并格式：当前视频流 + 最佳音频
@@ -156,8 +191,8 @@ class VideoDownloader:
                 video_results.append({
                     "format_id": download_format_id,
                     "ext": ext,
-                    "resolution": f"{f.get('width', '?')}x{height}",
-                    "height": height,
+                    "resolution": f"{f.get('width', '?')}x{actual_height if actual_height > 0 else '?'}",
+                    "height": actual_height,
                     "filesize": filesize,
                     "vcodec": vcodec,
                     "acodec": acodec if has_audio else "merged",
@@ -213,24 +248,52 @@ class VideoDownloader:
 
         return video_results[:12], audio_results[:6]
 
-    def download_video(self, url: str, format_id: str, is_audio_only: bool = False) -> dict:
+    def download_video(self, url: str, format_id: str, is_audio_only: bool = False, progress_callback=None) -> dict:
         """
-        执行实际的下载操作。
-        如果需要合并流（比如 1080p 视频 + 独立音频），会调用 FFmpeg 进行处理。
-        下载后的文件会根据视频标题进行命名，并存储在 downloads 目录中。
+        执行实际的下载操作并支持进度回传。
         """
+
+        def _progress_hook(d):
+            if progress_callback:
+                # 识别当前下载的是视频还是音频
+                info = d.get("info_dict", {})
+                download_type = "video"
+                if info.get("vcodec") == "none":
+                    download_type = "audio"
+                elif info.get("acodec") == "none":
+                    download_type = "video"
+                
+                data = {
+                    "status": d.get("status"),
+                    "download_type": download_type,
+                    "downloaded_bytes": d.get("downloaded_bytes", 0),
+                    "total_bytes": d.get("total_bytes") or d.get("total_bytes_estimate", 0),
+                    "speed": d.get("speed"),
+                    "eta": d.get("eta"),
+                }
+                if data["total_bytes"] > 0:
+                    data["progress_percent"] = round((data["downloaded_bytes"] / data["total_bytes"]) * 100, 2)
+                else:
+                    data["progress_percent"] = 0
+                progress_callback(data)
 
         # 如果没有 ffmpeg，无法合并流，回退到单流最佳
         if not self.has_ffmpeg and ("+" in format_id or format_id.endswith("/best")):
             format_id = "best"
 
-        ydl_opts = {
+        # 动态设置 Referer
+        referer = self._get_referer(url)
+
+        ydl_opts = self.common_ytdl_opts.copy()
+        ydl_opts['http_headers'] = self.common_ytdl_opts['http_headers'].copy()
+        ydl_opts['http_headers']['Referer'] = referer
+
+        ydl_opts.update({
             "format": format_id,
             "outtmpl": os.path.join(self.DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-            "quiet": True,
-            "no_warnings": True,
             "noplaylist": True,
-        }
+            "progress_hooks": [_progress_hook],
+        })
 
         if self.has_ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg_path

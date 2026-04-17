@@ -1,7 +1,7 @@
-fastapi>=0.135.0
-uvicorn>=0.34.0
-yt-dlp>=2026.1.0
-httpx>=0.28.0
-python-dotenv>=1.0.0
-requests>=2.31.0
-static-ffmpeg>=3.0
+fastapi
+uvicorn
+yt-dlp
+httpx
+python-dotenv
+requests
+static-ffmpeg
