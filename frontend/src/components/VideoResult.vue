@@ -4,17 +4,18 @@
     <transition name="fade">
       <div v-if="taskProgress.show" class="task-overlay">
          <div class="task-card glass-panel">
+            <button class="task-close-btn" @click="closeTask">×</button>
             <div class="task-header">
                <div class="spinner-container">
                   <div v-if="taskProgress.status !== 'completed' && taskProgress.status !== 'failed'" class="premium-loader"></div>
                   <div v-else-if="taskProgress.status === 'completed'" class="success-icon">
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none"><polyline points="20 6 9 17 4 12"></polyline></svg>
                   </div>
-                  <div v-else-if="taskProgress.status === 'failed'" class="error-icon">
+                  <div v-else-if="taskProgress.status === 'failed'" class="error-icon clickable" @click="closeTask">
                     <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="3" fill="none"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                   </div>
                </div>
-               <div class="task-title-group">
+               <div class="task-title-group" v-if="taskProgress.status !== 'failed'">
                   <h3>{{ taskProgress.statusText }}</h3>
                   <p class="task-filename" v-if="video.title">{{ video.title }}</p>
                </div>
@@ -32,7 +33,9 @@
             
             <div class="task-error" v-if="taskProgress.status === 'failed'">
                <p>{{ taskProgress.errorMsg }}</p>
-               <button class="btn-secondary btn-small" @click="taskProgress.show = false">{{ t.videoResult.close }}</button>
+               <div class="error-actions">
+                  <button v-if="taskProgress.errorMsg.includes('限额')" class="btn-primary btn-small" @click="handleUpgrade">{{ t.pricing.action.upgrade }}</button>
+               </div>
             </div>
          </div>
       </div>
@@ -109,6 +112,7 @@ import { useI18n } from '../i18n';
 
 // 国际化文案
 const { t } = useI18n();
+const emit = defineEmits(['open-pricing']);
 
 // 定义属性
 const props = defineProps({
@@ -170,6 +174,20 @@ const formatBytes = (bytes, decimals = 2) => {
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 };
 
+const closeTask = () => {
+    taskProgress.show = false;
+    setTimeout(() => {
+        taskProgress.status = 'idle';
+        taskProgress.percent = 0;
+        taskProgress.errorMsg = '';
+    }, 300);
+};
+
+const handleUpgrade = () => {
+    closeTask();
+    emit('open-pricing');
+};
+
 /**
  * 处理下载：三阶段流程 (Prepare -> Status -> Fetch)
  */
@@ -210,20 +228,38 @@ const handleDownload = async () => {
                     return;
                 } else if (data.status === 'failed') {
                     taskProgress.status = 'failed';
-                    taskProgress.errorMsg = data.error || 'Task failed';
+                    let msg = data.error || 'Task failed';
+                    if (msg.includes('限额')) {
+                        msg = t.value.videoResult.quotaLimitReached;
+                    } else if (msg.includes('403:')) {
+                        msg = msg.split('403:')[1].trim();
+                    }
+                    taskProgress.errorMsg = msg;
                     return;
                 }
                 setTimeout(poll, 1500);
             } catch (e) {
                 taskProgress.status = 'failed';
-                taskProgress.errorMsg = 'Polling failed: ' + e.message;
+                let msg = e.response?.data?.detail || e.message;
+                if (msg.includes('限额')) {
+                    msg = t.value.videoResult.quotaLimitReached;
+                } else if (msg.includes('403:')) {
+                    msg = msg.split('403:')[1].trim();
+                }
+                taskProgress.errorMsg = msg;
             }
         };
         await poll();
     } catch (err) {
         taskProgress.status = 'failed';
-        taskProgress.errorMsg = err.message;
-        error.value = err.message || t.value.videoResult.errorDownloadFailed;
+        let msg = err.response?.data?.detail || err.message;
+        if (msg.includes('限额')) {
+            msg = t.value.videoResult.quotaLimitReached;
+        } else if (msg.includes('403:')) {
+            msg = msg.split('403:')[1].trim();
+        }
+        taskProgress.errorMsg = msg;
+        error.value = msg;
     }
 };
 </script>
@@ -265,6 +301,31 @@ const handleDownload = async () => {
   padding: 40px;
   text-align: left;
   border-radius: 24px;
+  position: relative;
+}
+
+.task-close-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  transform: rotate(90deg);
 }
 
 .task-header {
@@ -551,6 +612,54 @@ const handleDownload = async () => {
   .video-title {
     font-size: 1.25rem;
   }
+}
+
+.error-actions {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+}
+
+.error-icon.clickable {
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.error-icon.clickable:hover {
+  transform: scale(1.1);
+  background: #ff5f5f;
+}
+
+.task-error {
+  text-align: center;
+  width: 100%;
+}
+
+.task-error p {
+  color: #ef4444;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.btn-small {
+  padding: 8px 28px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: 99px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Transitions */

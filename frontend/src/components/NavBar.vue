@@ -23,9 +23,14 @@
           </div>
         </div>
         
-        <button v-else @click="$emit('open-auth')" class="login-btn">
-          {{ t.navbar.login || '登录 / 注册' }}
-        </button>
+        <div v-else class="auth-buttons">
+          <button @click="$emit('open-auth', 'login')" class="login-btn secondary">
+            {{ t.auth.login }}
+          </button>
+          <button @click="$emit('open-auth', 'register')" class="login-btn">
+            {{ t.auth.register }}
+          </button>
+        </div>
 
         <button @click="i18n.toggle()" class="lang-btn">
           {{ i18n.current === 'zh' ? 'EN' : '中' }}
@@ -214,6 +219,11 @@ const handleUpgrade = () => {
   color: #ef4444;
 }
 
+.auth-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .login-btn {
   background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
   color: white;
@@ -225,6 +235,18 @@ const handleUpgrade = () => {
   cursor: pointer;
   transition: all 0.3s ease;
   box-shadow: 0 4px 15px rgba(236, 72, 113, 0.2);
+}
+
+.login-btn.secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.login-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .login-btn:hover {

@@ -10,7 +10,7 @@
     
     <NavBar 
       :user="user"
-      @open-auth="showAuthModal = true" 
+      @open-auth="(mode) => { authMode = mode; showAuthModal = true; }" 
       @open-pricing="showPricingModal = true"
       @logout="user = null" 
       @refresh-user="fetchUser"
@@ -38,6 +38,7 @@
           v-if="showResult" 
           :video="parsedVideo" 
           :url="currentUrl"
+          @open-pricing="showPricingModal = true"
         />
 
         <template v-if="!showResult">
@@ -52,6 +53,7 @@
     <!-- Auth Modal -->
     <AuthModal 
       v-if="showAuthModal" 
+      :mode="authMode"
       @close="showAuthModal = false" 
       @success="fetchUser"
     />
@@ -96,6 +98,7 @@ const { t } = useI18n();
 // 响应式状态定义
 const user = ref(null);
 const showAuthModal = ref(false);
+const authMode = ref('login');
 const showPricingModal = ref(false);
 const parsedVideo = ref(null);
 const currentUrl = ref('');

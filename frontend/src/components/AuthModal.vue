@@ -51,10 +51,17 @@ import { ref } from 'vue';
 import { api } from '../api';
 import { useI18n } from '../i18n';
 
+const props = defineProps({
+  mode: {
+    type: String,
+    default: 'login' // 'login' or 'register'
+  }
+});
+
 const emit = defineEmits(['close', 'success']);
 const { t } = useI18n();
 
-const isLogin = ref(true);
+const isLogin = ref(props.mode === 'login');
 const username = ref('');
 const password = ref('');
 const error = ref('');

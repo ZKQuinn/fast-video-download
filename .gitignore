@@ -22,6 +22,9 @@ env/
 # Downloaded files
 backend/downloads/
 
+# Database
+*.db
+
 # AI Artifacts & Tests
 artifacts/
 backend/test_results.json

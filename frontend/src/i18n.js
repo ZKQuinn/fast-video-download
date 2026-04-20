@@ -14,10 +14,16 @@ export const locales = {
     auth: {
       login: "登录",
       register: "注册",
+      loginSubtitle: "欢迎回来，请登录您的账号",
+      registerSubtitle: "创建一个新账号，开启高级下载体验",
       email: "电子邮箱",
+      emailPlaceholder: "请输入您的邮箱地址",
       password: "密码",
-      noAccount: "没有账号？立即注册",
-      hasAccount: "已有账号？立即登录",
+      passwordPlaceholder: "请输入您的密码",
+      loginAction: "立即登录",
+      registerAction: "立即注册",
+      switchRegister: "没有账号？立即注册",
+      switchLogin: "已有账号？立即登录",
       processing: "处理中...",
       success: "操作成功",
       error: "认证失败，请检查输入"
@@ -25,31 +31,36 @@ export const locales = {
     pricing: {
       title: "选择适合你的视频下载方案",
       subtitle: "免费版满足日常视频下载需求，VIP 解锁无限下载等全部高级功能",
-      freeName: "免费版",
-      freeDesc: "满足基础下载需求",
-      freePrice: "0",
-      freePeriod: "/永久",
-      freeFeatures: [
-        "每日 5 次视频下载",
-        "支持 1800+ 平台",
-        "基础视频信息解析",
-        "标准下载速度"
-      ],
-      currentPlan: "当前方案",
-      vipName: "VIP 高级版",
-      vipDesc: "解锁全部功能，无限制使用",
-      vipPrice: "9.9",
-      vipPeriod: "/月",
-      vipLimit: "限时优惠",
-      vipFeatures: [
-        "无限次视频下载",
-        "最高画质支持 (4K/8K)",
-        "极速下载通道",
-        "专属客服优先支持",
-        "去广告纯净体验"
-      ],
-      buyBtn: "立即开通 VIP",
-      loading: "跳转中...",
+      free: {
+        name: "免费版",
+        desc: "满足基础下载需求",
+        period: "永久",
+        features: [
+          "每日 5 次视频下载",
+          "支持 1800+ 平台",
+          "基础视频信息解析",
+          "标准下载速度"
+        ]
+      },
+      vip: {
+        name: "VIP 高级版",
+        desc: "解锁全部功能，无限制使用",
+        price: "9.9",
+        period: "月",
+        recommend: "推荐方案",
+        tag: "限时优惠",
+        features: [
+          "无限次视频下载",
+          "极速下载通道",
+          "专属客服优先支持",
+          "去广告纯净体验"
+        ]
+      },
+      action: {
+        current: "当前方案",
+        upgrade: "立即开通 VIP",
+        loading: "跳转中..."
+      },
       error: "支付系统启动失败，请稍后尝试"
     },
     hero: {
@@ -98,7 +109,9 @@ export const locales = {
       resUnit: "p",
       auto: "自动",
       containsAudio: "🔊 含音频",
-      audioOnly: "🎵 纯音频"
+      audioOnly: "🎵 纯音频",
+      quotaLimitReached: "每日限额已达 (5次)，请升级 VIP 享受无限下载",
+      close: "关闭"
     },
     app: {
       errorInvalidUrl: "请输入有效的 HTTP/HTTPS 链接",
@@ -121,10 +134,16 @@ export const locales = {
     auth: {
       login: "Login",
       register: "Register",
+      loginSubtitle: "Welcome back, please login to your account",
+      registerSubtitle: "Create a new account for premium experience",
       email: "Email Address",
+      emailPlaceholder: "Enter your email address",
       password: "Password",
-      noAccount: "No account? Register now",
-      hasAccount: "Already have an account? Login",
+      passwordPlaceholder: "Enter your password",
+      loginAction: "Login Now",
+      registerAction: "Register Now",
+      switchRegister: "No account? Register now",
+      switchLogin: "Already have an account? Login",
       processing: "Processing...",
       success: "Success",
       error: "Authentication failed"
@@ -132,31 +151,36 @@ export const locales = {
     pricing: {
       title: "Choose Your Plan",
       subtitle: "Free for basic needs, VIP for unlimited downloads and premium features",
-      freeName: "Free",
-      freeDesc: "Basic features",
-      freePrice: "0",
-      freePeriod: "/forever",
-      freeFeatures: [
-        "5 downloads per day",
-        "1800+ platforms supported",
-        "Meta info parsing",
-        "Standard download speed"
-      ],
-      currentPlan: "Current Plan",
-      vipName: "VIP Premium",
-      vipDesc: "Unlock all features, unlimited access",
-      vipPrice: "9.9",
-      vipPeriod: "/mo",
-      vipLimit: "Limited Offer",
-      vipFeatures: [
-        "Unlimited downloads",
-        "Ultra-HD support (4K/8K)",
-        "High-speed server channel",
-        "Priority customer support",
-        "Pure ad-free experience"
-      ],
-      buyBtn: "Get VIP Now",
-      loading: "Redirecting...",
+      free: {
+        name: "Free",
+        desc: "Basic features",
+        period: "forever",
+        features: [
+          "5 downloads per day",
+          "1800+ platforms supported",
+          "Meta info parsing",
+          "Standard download speed"
+        ]
+      },
+      vip: {
+        name: "VIP Premium",
+        desc: "Unlock all features, unlimited access",
+        price: "9.9",
+        period: "mo",
+        recommend: "Best Value",
+        tag: "Limited Offer",
+        features: [
+          "Unlimited downloads",
+          "High-speed server channel",
+          "Priority customer support",
+          "Pure ad-free experience"
+        ]
+      },
+      action: {
+        current: "Current Plan",
+        upgrade: "Get VIP Now",
+        loading: "Redirecting..."
+      },
       error: "Payment failed to start, please try again later"
     },
     hero: {
@@ -205,7 +229,9 @@ export const locales = {
       resUnit: "p",
       auto: "Auto",
       containsAudio: "🔊 Has Audio",
-      audioOnly: "🎵 Audio Only"
+      audioOnly: "🎵 Audio Only",
+      quotaLimitReached: "Daily limit reached (5 times), please upgrade to VIP for unlimited downloads",
+      close: "Close"
     },
     app: {
       errorInvalidUrl: "Please enter a valid HTTP/HTTPS url",

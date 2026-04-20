@@ -158,9 +158,9 @@ const handleBuy = async () => {
 }
 
 .pricing-card.premium {
-  background: linear-gradient(145deg, #2563eb 0%, #1d4ed8 100%);
+  background: var(--gradient-primary);
   color: white;
-  box-shadow: 0 20px 40px rgba(37, 99, 235, 0.2);
+  box-shadow: 0 20px 40px var(--color-primary-glow);
 }
 
 .recommend-badge {
@@ -182,7 +182,7 @@ const handleBuy = async () => {
 
 .plan-desc {
   font-size: 0.95rem;
-  opacity: 0.7;
+  opacity: 0.8;
   margin-bottom: 24px;
 }
 
@@ -205,7 +205,7 @@ const handleBuy = async () => {
 }
 
 .period {
-  opacity: 0.5;
+  opacity: 0.6;
   font-size: 1rem;
 }
 
@@ -238,7 +238,7 @@ const handleBuy = async () => {
 }
 
 .premium .check {
-  color: #fbbf24;
+  color: white;
 }
 
 .plan-btn {
@@ -260,7 +260,7 @@ const handleBuy = async () => {
 
 .plan-btn.primary {
   background: white;
-  color: #2563eb;
+  color: var(--color-primary);
   border: none;
 }
 

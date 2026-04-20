@@ -41,8 +41,8 @@ import stripe
 
 # 常量与配置
 DOWNLOAD_DIR = "downloads"
-STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "YOUR_STRIPE_API_KEY") # 请替换为你的 Sk Key
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "YOUR_WEBHOOK_SECRET") # 请替换为你的 Webhook Secret
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "")  # 在 .env 文件或环境变量中配置
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")  # 在 .env 文件或环境变量中配置
 
 stripe.api_key = STRIPE_API_KEY
 
