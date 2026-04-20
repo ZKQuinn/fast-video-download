@@ -13,12 +13,31 @@
 <div align="center">
   <img src="docs/images/screenshot_home.png" width="800" alt="Home Page" />
   <p><i>图 1：基于 OLED 灵感的沉浸式暗色模式预览</i></p>
-  
+
   <br />
-  
+
   <img src="docs/images/screenshot_pricing.png" width="800" alt="VIP Pricing" />
   <p><i>图 2：打磨极致的 VIP 会员支付方案界面</i></p>
 </div>
+
+  <br />
+
+  <img src="docs/images/download.png" width="800" alt="VIP Pricing" />
+  <p><i>图 3：下载界面1</i></p>
+</div>
+
+<br />
+
+  <img src="docs/images/downloading.png" width="800" alt="VIP Pricing" />
+  <p><i>图 4：下载界面2</i></p>
+</div>
+
+<br />
+
+  <img src="docs/images/pay.png" width="800" alt="VIP Pricing" />
+  <p><i>图 5：支付界面</i></p>
+</div>
+
 
 ---
 
@@ -113,4 +132,4 @@ npm run dev
 用户在使用本程序下载任何音视频内容时，必须确保已获得原作者授权并遵守相关法律法规。任何滥用导致的后果由用户个人承担。
 
 ---
-© 2024 Fast Video Download. Developed with ❤️ by ZKQuinn.
+© 2026 Fast Video Download. Developed with ❤️ by ZKQuinn.
