@@ -36,7 +36,7 @@
           {{ i18n.current === 'zh' ? 'EN' : '中' }}
         </button>
 
-        <a href="https://github.com/ZKQuinn" target="_blank" class="github-link mobile-hide">
+        <a href="https://github.com/ZKQuinn/fast-video-download" target="_blank" class="github-link mobile-hide">
           {{ t.navbar.github }}
         </a>
       </div>
