@@ -3,7 +3,54 @@ import { reactive, computed } from 'vue';
 export const locales = {
   zh: {
     navbar: {
-      github: "GitHub"
+      github: "GitHub",
+      login: "登录 / 注册",
+      logout: "退出登录",
+      upgrade: "升级 VIP 💎",
+      vip: "VIP",
+      free: "普通用户",
+      quota: "今日额度:"
+    },
+    auth: {
+      login: "登录",
+      register: "注册",
+      email: "电子邮箱",
+      password: "密码",
+      noAccount: "没有账号？立即注册",
+      hasAccount: "已有账号？立即登录",
+      processing: "处理中...",
+      success: "操作成功",
+      error: "认证失败，请检查输入"
+    },
+    pricing: {
+      title: "选择适合你的视频下载方案",
+      subtitle: "免费版满足日常视频下载需求，VIP 解锁无限下载等全部高级功能",
+      freeName: "免费版",
+      freeDesc: "满足基础下载需求",
+      freePrice: "0",
+      freePeriod: "/永久",
+      freeFeatures: [
+        "每日 5 次视频下载",
+        "支持 1800+ 平台",
+        "基础视频信息解析",
+        "标准下载速度"
+      ],
+      currentPlan: "当前方案",
+      vipName: "VIP 高级版",
+      vipDesc: "解锁全部功能，无限制使用",
+      vipPrice: "9.9",
+      vipPeriod: "/月",
+      vipLimit: "限时优惠",
+      vipFeatures: [
+        "无限次视频下载",
+        "最高画质支持 (4K/8K)",
+        "极速下载通道",
+        "专属客服优先支持",
+        "去广告纯净体验"
+      ],
+      buyBtn: "立即开通 VIP",
+      loading: "跳转中...",
+      error: "支付系统启动失败，请稍后尝试"
     },
     hero: {
       titleLine1: "极速，全网视频",
@@ -56,12 +103,61 @@ export const locales = {
     app: {
       errorInvalidUrl: "请输入有效的 HTTP/HTTPS 链接",
       errorParseFailed: "解析失败: ",
-      defaultError: "解析失败，请检查链接或稍后重试。"
+      defaultError: "解析失败，请检查链接或稍后重试。",
+      paymentSuccess: "🎉 支付成功！欢迎成为尊贵 VIP",
+      paymentCancel: "支付已取消"
     }
   },
   en: {
     navbar: {
-      github: "GitHub"
+      github: "GitHub",
+      login: "Login / Register",
+      logout: "Logout",
+      upgrade: "Upgrade VIP 💎",
+      vip: "VIP",
+      free: "Free User",
+      quota: "Quota:"
+    },
+    auth: {
+      login: "Login",
+      register: "Register",
+      email: "Email Address",
+      password: "Password",
+      noAccount: "No account? Register now",
+      hasAccount: "Already have an account? Login",
+      processing: "Processing...",
+      success: "Success",
+      error: "Authentication failed"
+    },
+    pricing: {
+      title: "Choose Your Plan",
+      subtitle: "Free for basic needs, VIP for unlimited downloads and premium features",
+      freeName: "Free",
+      freeDesc: "Basic features",
+      freePrice: "0",
+      freePeriod: "/forever",
+      freeFeatures: [
+        "5 downloads per day",
+        "1800+ platforms supported",
+        "Meta info parsing",
+        "Standard download speed"
+      ],
+      currentPlan: "Current Plan",
+      vipName: "VIP Premium",
+      vipDesc: "Unlock all features, unlimited access",
+      vipPrice: "9.9",
+      vipPeriod: "/mo",
+      vipLimit: "Limited Offer",
+      vipFeatures: [
+        "Unlimited downloads",
+        "Ultra-HD support (4K/8K)",
+        "High-speed server channel",
+        "Priority customer support",
+        "Pure ad-free experience"
+      ],
+      buyBtn: "Get VIP Now",
+      loading: "Redirecting...",
+      error: "Payment failed to start, please try again later"
     },
     hero: {
       titleLine1: "Fast & Professional",
@@ -114,7 +210,9 @@ export const locales = {
     app: {
       errorInvalidUrl: "Please enter a valid HTTP/HTTPS url",
       errorParseFailed: "Parse failed: ",
-      defaultError: "Parse failed, please check the link or try again later."
+      defaultError: "Parse failed, please check the link or try again later.",
+      paymentSuccess: "🎉 Payment Successful! Welcome to VIP",
+      paymentCancel: "Payment cancelled"
     }
   }
 };

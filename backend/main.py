@@ -19,13 +19,32 @@ import re
 from typing import Optional
 from urllib.parse import urlparse
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Query
+from fastapi import FastAPI, HTTPException, Request, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from downloader import VideoDownloader
 from douyin import DouyinParser
+import models
+from database import engine, Base, get_db
+from auth import (
+    get_password_hash, 
+    verify_password, 
+    create_access_token, 
+    get_current_user
+)
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+from datetime import date, datetime, timedelta
+import stripe
+
+# 常量与配置
+DOWNLOAD_DIR = "downloads"
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "YOUR_STRIPE_API_KEY") # 请替换为你的 Sk Key
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "YOUR_WEBHOOK_SECRET") # 请替换为你的 Webhook Secret
+
+stripe.api_key = STRIPE_API_KEY
 
 # 常量：下载临时文件存储目录
 DOWNLOAD_DIR = "downloads"
@@ -52,9 +71,13 @@ class DownloadRequest(BaseModel):
     format_id: str = "best" # 目标格式 ID，默认为最佳画质
     is_audio_only: bool = False # 是否仅下载音频
 
-# 启动事件：确保下载目录存在并清理旧文件
+# 启动事件：确保数据库和下载目录存在并清理旧文件
 @app.on_event("startup")
 async def startup_event():
+    # 初始化数据库表
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
     # 清理一小时以上的临时视频文件，避免占用磁盘空间
     for filename in os.listdir(DOWNLOAD_DIR):
@@ -72,19 +95,170 @@ async def startup_event():
 async def health_check():
     return {"status": "ok", "message": "服务运行正常"}
 
+# --- 用户与认证接口 ---
+
+class UserCreate(BaseModel):
+    email: str # 使用邮箱注册
+    password: str
+
+@app.post("/api/auth/register")
+async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(models.User).filter(models.User.username == user_in.email))
+    if result.scalars().first():
+        raise HTTPException(status_code=400, detail="该邮箱已注册")
+    
+    new_user = models.User(
+        username=user_in.email,
+        hashed_password=get_password_hash(user_in.password),
+        is_vip=False
+    )
+    db.add(new_user)
+    await db.commit()
+    return {"message": "注册成功"}
+
+@app.post("/api/auth/login")
+async def login(request: Request, db: AsyncSession = Depends(get_db)):
+    # 支持 Form data 为 OAuth2 兼容，这里简化为从 JSON 获取
+    form_data = await request.json()
+    username = form_data.get("username")
+    password = form_data.get("password")
+    
+    result = await db.execute(select(models.User).filter(models.User.username == username))
+    user = result.scalars().first()
+    
+    if not user or not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    
+    access_token = create_access_token(data={"sub": user.username})
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.get("/api/user/me")
+async def read_users_me(current_user: models.User = Depends(get_current_user)):
+    return {
+        "username": current_user.username,
+        "is_vip": current_user.is_vip,
+        "daily_download_count": current_user.daily_download_count,
+        "role": "VIP" if current_user.is_vip else "FREE"
+    }
+
+# 接口：创建 Stripe 支付会话
+@app.post("/api/stripe/create-checkout-session")
+async def create_checkout_session(current_user: models.User = Depends(get_current_user)):
+    try:
+        # 创建一个一次性购买会话
+        checkout_session = stripe.checkout.Session.create(
+            payment_method_types=['card', 'alipay'], # 根据实际账号权限可选
+            line_items=[
+                {
+                    'price_data': {
+                        'currency': 'cny',
+                        'product_data': {
+                            'name': 'Fast Video Download VIP (1个月)',
+                            'description': '解锁无限 AI 视频总结权限',
+                        },
+                        'unit_amount': 990, # 9.90 CNY
+                    },
+                    'quantity': 1,
+                },
+            ],
+            mode='payment',
+            success_url='http://localhost:5173/?payment=success', # 支付成功回传
+            cancel_url='http://localhost:5173/?payment=cancel',
+            metadata={
+                "user_id": current_user.id
+            }
+        )
+        return {"url": checkout_session.url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# 接口：Stripe Webhook 回调（重要：支付安全性核心）
+@app.post("/api/stripe/webhook")
+async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    payload = await request.body()
+    sig_header = request.headers.get("Stripe-Signature")
+    
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except Exception as e:
+        print(f"Webhook 签名验证失败: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # 处理支付成功事件
+    if event['type'] == 'checkout.session.completed':
+        session = event['data']['object']
+        # 彻底修复：将 StripeObject 转换为原生字典，确保 .get() 可用
+        metadata = dict(getattr(session, 'metadata', {}))
+        user_id = metadata.get("user_id")
+        
+        if user_id:
+            # 找到对应用户并升级
+            user_id = int(user_id)
+            result = await db.execute(select(models.User).filter(models.User.id == user_id))
+            user = result.scalars().first()
+            if user:
+                user.is_vip = True
+                # 设置过期时间为当前时间的 30 天后
+                if user.vip_expire_at and user.vip_expire_at > datetime.now():
+                    user.vip_expire_at += timedelta(days=30)
+                else:
+                    user.vip_expire_at = datetime.now() + timedelta(days=30)
+                
+                await db.commit()
+                print(f"用户 {user.username} 已通过 Stripe 升级为 VIP")
+
+    return {"status": "success"}
+
+# --- 视频功能逻辑 ---
+
 # 接口 2: 视频解析
 @app.post("/api/parse")
-async def parse_video(request: ParseRequest):
+async def parse_video(request: ParseRequest, current_user: Optional[models.User] = Depends(get_current_user)):
     try:
-        # 使用正则从可能的包含文字的消息中提取 URL
-        match = re.search(r"https?://[^\s]+", request.url)
-        url = match.group(0) if match else request.url
-        if url.endswith('】'):
-            url = url.rstrip('】')
-        print(f"正在解析链接: {url}")
+        raw_input = request.url.strip()
+        # ... 原有解析逻辑 ...
+        url = raw_input
+
+        # 新增：@ 符号功能支持
+        if raw_input.startswith("@"):
+            # 模式 1: 平台快捷搜索 (例如 @yt amazing cats)
+            shortcut_match = re.match(r"^@([a-z]+)\s+(.+)$", raw_input, re.IGNORECASE)
+            if shortcut_match:
+                platform_code = shortcut_match.group(1).lower()
+                query = shortcut_match.group(2)
+                
+                # 映射平台代码到 yt-dlp 搜索前缀
+                platform_map = {
+                    "yt": "ytsearch5:",
+                    "youtube": "ytsearch5:",
+                    "bi": "bilibili:",
+                    "bilibili": "bilibili:",
+                    "tt": "tiktok:",
+                    "tiktok": "tiktok:",
+                }
+                
+                if platform_code in platform_map:
+                    url = f"{platform_map[platform_code]}{query}"
+            
+            # 模式 2: 社交媒体 Handle (例如 @username)
+            elif re.match(r"^@[a-zA-Z0-9._-]{3,30}$", raw_input):
+                handle = raw_input[1:]
+                # 默认解析为 YouTube Handle 链接
+                url = f"https://www.youtube.com/@{handle}"
+        
+        # 原有逻辑：使用正则从可能的包含文字的消息中提取 URL
+        if not url.startswith(("ytsearch", "bilibili:", "tiktok:")):
+            match = re.search(r"https?://[^\s]+", url)
+            url = match.group(0) if match else url
+            if url.endswith('】'):
+                url = url.rstrip('】')
+        
+        print(f"正在解析链接/查询: {url}")
         
         # 抖音链接特殊处理
-        if url.startswith("v.douyin.com") or "douyin.com" in url:
+        if "v.douyin.com" in url or "douyin.com" in url:
             if not url.startswith("http"):
                 url = "https://" + url
             parser = DouyinParser()
@@ -122,7 +296,7 @@ download_tasks = {}
 
 # 接口 3: 下载准备任务 (创建下载任务并后台执行)
 @app.post("/api/download/prepare")
-async def prepare_download(request: Request):
+async def prepare_download(request: Request, current_user: models.User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     try:
         body = await request.json()
         url = body.get("url")
@@ -131,6 +305,30 @@ async def prepare_download(request: Request):
 
         if not url:
             raise HTTPException(status_code=400, detail="必须提供视频链接 URL")
+
+        # 会员与配额检查
+        today = str(date.today())
+        if current_user.last_download_date != today:
+            current_user.last_download_date = today
+            current_user.daily_download_count = 0
+        
+        if not current_user.is_vip:
+            FREE_LIMIT = 5 # 普通用户每天 5 次
+            if current_user.daily_download_count >= FREE_LIMIT:
+                raise HTTPException(status_code=403, detail=f"每日限额已达 ({FREE_LIMIT}次)，请升级 VIP 享受无限下载")
+        else:
+            # VIP 检查：是否已过期
+            if current_user.vip_expire_at and current_user.vip_expire_at < datetime.now():
+                current_user.is_vip = False
+                await db.commit()
+                # 过期后退回普通用户限额检查
+                FREE_LIMIT = 5
+                if current_user.daily_download_count >= FREE_LIMIT:
+                    raise HTTPException(status_code=403, detail="您的 VIP 已到期，且免费额度已用完，请续费")
+
+        # 更新下载计数
+        current_user.daily_download_count += 1
+        await db.commit()
 
         # 预先清理 URL，处理带有标题的分享链接
         import re

@@ -5,3 +5,11 @@ httpx
 python-dotenv
 requests
 static-ffmpeg
+sqlalchemy
+aiosqlite
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1
+python-multipart
+greenlet
+stripe

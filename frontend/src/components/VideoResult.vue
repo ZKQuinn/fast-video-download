@@ -32,7 +32,7 @@
             
             <div class="task-error" v-if="taskProgress.status === 'failed'">
                <p>{{ taskProgress.errorMsg }}</p>
-               <button class="btn-secondary btn-small" @click="taskProgress.show = false">Close</button>
+               <button class="btn-secondary btn-small" @click="taskProgress.show = false">{{ t.videoResult.close }}</button>
             </div>
          </div>
       </div>

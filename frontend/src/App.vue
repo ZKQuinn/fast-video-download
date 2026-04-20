@@ -8,7 +8,14 @@
     <!-- Background Decoration -->
     <div class="bg-glow"></div>
     
-    <NavBar />
+    <NavBar 
+      :user="user"
+      @open-auth="showAuthModal = true" 
+      @open-pricing="showPricingModal = true"
+      @logout="user = null" 
+      @refresh-user="fetchUser"
+      @clear="handleClear"
+    />
     
     <main>
       <HeroSection @parse="handleParse" @clear="handleClear" :loading="loading" />
@@ -17,6 +24,7 @@
         <transition name="fade">
           <div v-if="globalError" class="global-error glass-panel">
             <div class="error-icon">
+              <!-- ... Error SVG ... -->
               <svg viewBox="0 0 24 24" width="20" height="20" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
             </div>
             <div class="error-text">
@@ -40,13 +48,42 @@
     </main>
 
     <FooterSection />
+
+    <!-- Auth Modal -->
+    <AuthModal 
+      v-if="showAuthModal" 
+      @close="showAuthModal = false" 
+      @success="fetchUser"
+    />
+
+    <!-- Pricing Modal -->
+    <PricingModal 
+      v-if="showPricingModal"
+      @close="showPricingModal = false"
+    />
+
+    <!-- Payment Toast Notification -->
+    <transition name="slide-fade">
+      <div v-if="paymentStatus" class="payment-toast glass-panel" :class="paymentStatus">
+        <div class="toast-icon">
+          <span v-if="paymentStatus === 'success'">🎉</span>
+          <span v-else>⚠️</span>
+        </div>
+        <div class="toast-content">
+          <h4>{{ paymentStatus === 'success' ? t.app.paymentSuccess : t.app.paymentCancel }}</h4>
+        </div>
+        <button @click="paymentStatus = null" class="close-toast">×</button>
+      </div>
+    </transition>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, nextTick } from 'vue';
+import { ref, computed, nextTick, onMounted } from 'vue';
 import { useI18n } from './i18n';
 import NavBar from './components/NavBar.vue';
+import AuthModal from './components/AuthModal.vue';
+import PricingModal from './components/PricingModal.vue';
 import HeroSection from './components/HeroSection.vue';
 import VideoResult from './components/VideoResult.vue';
 import FeatureSection from './components/FeatureSection.vue';
@@ -57,52 +94,81 @@ import { api } from './api';
 const { t } = useI18n();
 
 // 响应式状态定义
-const parsedVideo = ref(null); // 解析后的视频数据对象
-const currentUrl = ref('');    // 当前正在处理的 URL
-const globalError = ref('');   // 全局错误提示文本
-const loading = ref(false);    // 是否处于解析/加载状态
+const user = ref(null);
+const showAuthModal = ref(false);
+const showPricingModal = ref(false);
+const parsedVideo = ref(null);
+const currentUrl = ref('');
+const globalError = ref('');
+const loading = ref(false);
 
-// 计算属性：是否显示解析结果面板
 const showResult = computed(() => parsedVideo.value !== null);
+const paymentStatus = ref(null); // 'success', 'cancel', or null
 
-/**
- * 处理视频解析事件
- * @param {string} url 用户输入的视频链接
- */
+const fetchUser = async () => {
+  try {
+    const data = await api.getMe();
+    user.value = data;
+  } catch (e) {
+    user.value = null;
+  }
+};
+
+onMounted(() => {
+    fetchUser();
+    checkPaymentStatus();
+});
+
+const checkPaymentStatus = () => {
+  const urlParams = new URLSearchParams(window.location.search);
+  const payment = urlParams.get('payment');
+  
+  if (payment === 'success') {
+    paymentStatus.value = 'success';
+    // 支付成功后主动刷新用户信息
+    fetchUser();
+    // 3秒后自动关闭
+    setTimeout(() => paymentStatus.value = null, 5000);
+  } else if (payment === 'cancel') {
+    paymentStatus.value = 'cancel';
+    setTimeout(() => paymentStatus.value = null, 5000);
+  }
+  
+  // 清理 URL 参数，防止刷新页面再次提示
+  if (payment) {
+    const newUrl = window.location.origin + window.location.pathname;
+    window.history.replaceState({}, document.title, newUrl);
+  }
+};
+
 const handleParse = async (url) => {
-  // 重置状态
+  if (!user.value) {
+      showAuthModal.value = true;
+      return;
+  }
+  
   globalError.value = '';
   parsedVideo.value = null;
   currentUrl.value = url;
   loading.value = true;
   
   try {
-    // 调用 API 接口进行后端解析
     const data = await api.parseVideo(url);
-    
-    // 等待 Vue 完成数据清理产生的 DOM 更新
     await nextTick();
-    
-    // 设置新数据
     parsedVideo.value = data;
-    
-    // 渲染完成后，平滑滚动到结果区域
     await nextTick();
     const resultEl = document.querySelector('.video-result');
-    if (resultEl) {
-      resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (resultEl) resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    
+    // 解析成功后刷新用户信息（更新额度）
+    fetchUser();
   } catch (err) {
-    // 捕获错误并显示，若无具体信息则显示默认错误
     globalError.value = err.message || t.value.app.defaultError;
   } finally {
     loading.value = false;
   }
 };
 
-/**
- * 处理清除事件：清空所有解析状态回到初始首页
- */
 const handleClear = () => {
   parsedVideo.value = null;
   globalError.value = '';
@@ -187,5 +253,64 @@ main {
 .fade-leave-to {
   opacity: 0;
   transform: translateY(-20px);
+}
+
+/* Payment Toast Styles */
+.payment-toast {
+  position: fixed;
+  top: 90px;
+  right: 24px;
+  z-index: 1000;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 320px;
+  border-left: 4px solid transparent;
+}
+
+.payment-toast.success {
+  border-left-color: #10b981;
+}
+
+.payment-toast.cancel {
+  border-left-color: #f59e0b;
+}
+
+.toast-icon {
+  font-size: 1.5rem;
+}
+
+.toast-content h4 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.toast-content p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.close-toast {
+  background: transparent;
+  border: none;
+  color: var(--color-foreground);
+  opacity: 0.5;
+  font-size: 1.25rem;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.slide-fade-enter-active {
+  transition: all 0.3s ease-out;
+}
+.slide-fade-leave-active {
+  transition: all 0.3s cubic-bezier(1, 0.5, 0.8, 1);
+}
+.slide-fade-enter-from,
+.slide-fade-leave-to {
+  transform: translateX(20px);
+  opacity: 0;
 }
 </style>
