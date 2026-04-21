@@ -68,7 +68,7 @@ const handleBuy = async () => {
         const { url } = await api.createCheckoutSession();
         window.location.href = url;
     } catch (e) {
-        alert(e.message || (locale.value === 'zh' ? '支付系统启动失败，请稍后尝试' : 'Failed to launch payment system.'));
+        alert(e.message || t.value.pricing.error);
         loading.value = false;
     }
 };

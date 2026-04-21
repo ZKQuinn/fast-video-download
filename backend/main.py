@@ -18,8 +18,11 @@ import time
 import re
 from typing import Optional
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+load_dotenv()
 import httpx
-from fastapi import FastAPI, HTTPException, Request, Query, Depends
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -32,7 +35,8 @@ from auth import (
     get_password_hash, 
     verify_password, 
     create_access_token, 
-    get_current_user
+    get_current_user,
+    get_current_user_optional,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -40,22 +44,30 @@ from datetime import date, datetime, timedelta
 import stripe
 
 # 常量与配置
-DOWNLOAD_DIR = "downloads"
+BASE_DIR = os.path.dirname(__file__)
+DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
 STRIPE_API_KEY = os.getenv("STRIPE_API_KEY", "")  # 在 .env 文件或环境变量中配置
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")  # 在 .env 文件或环境变量中配置
+FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173").rstrip("/")
+FRONTEND_ORIGINS = [
+    origin.strip()
+    for origin in os.getenv(
+        "FRONTEND_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+FREE_LIMIT = 5
 
 stripe.api_key = STRIPE_API_KEY
-
-# 常量：下载临时文件存储目录
-DOWNLOAD_DIR = "downloads"
 
 # FastAPI 应用初始化
 app = FastAPI(title="Fast Video Download", description="通用视频下载 API 服务")
 
-# 跨域配置：允许前端所有源访问
+# 跨域配置：带凭证时不能使用通配符
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -118,10 +130,16 @@ async def register(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
 
 @app.post("/api/auth/login")
 async def login(request: Request, db: AsyncSession = Depends(get_db)):
-    # 支持 Form data 为 OAuth2 兼容，这里简化为从 JSON 获取
-    form_data = await request.json()
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        form_data = await request.json()
+    else:
+        form_data = dict(await request.form())
+
     username = form_data.get("username")
     password = form_data.get("password")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="缺少用户名或密码")
     
     result = await db.execute(select(models.User).filter(models.User.username == username))
     user = result.scalars().first()
@@ -145,6 +163,9 @@ async def read_users_me(current_user: models.User = Depends(get_current_user)):
 @app.post("/api/stripe/create-checkout-session")
 async def create_checkout_session(current_user: models.User = Depends(get_current_user)):
     try:
+        if not STRIPE_API_KEY:
+            raise HTTPException(status_code=503, detail="Stripe 尚未配置")
+
         # 创建一个一次性购买会话
         checkout_session = stripe.checkout.Session.create(
             payment_method_types=['card', 'alipay'], # 根据实际账号权限可选
@@ -162,19 +183,24 @@ async def create_checkout_session(current_user: models.User = Depends(get_curren
                 },
             ],
             mode='payment',
-            success_url='http://localhost:5173/?payment=success', # 支付成功回传
-            cancel_url='http://localhost:5173/?payment=cancel',
+            success_url=f'{FRONTEND_BASE_URL}/?payment=success', # 支付成功回传
+            cancel_url=f'{FRONTEND_BASE_URL}/?payment=cancel',
             metadata={
-                "user_id": current_user.id
+                "user_id": str(current_user.id)
             }
         )
         return {"url": checkout_session.url}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 # 接口：Stripe Webhook 回调（重要：支付安全性核心）
 @app.post("/api/stripe/webhook")
 async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Stripe Webhook 尚未配置")
+
     payload = await request.body()
     sig_header = request.headers.get("Stripe-Signature")
     
@@ -215,9 +241,11 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
 
 # 接口 2: 视频解析
 @app.post("/api/parse")
-async def parse_video(request: ParseRequest, current_user: Optional[models.User] = Depends(get_current_user)):
+async def parse_video(request: ParseRequest, current_user: Optional[models.User] = Depends(get_current_user_optional)):
     try:
         raw_input = request.url.strip()
+        if not raw_input:
+            raise HTTPException(status_code=400, detail="请输入视频链接或搜索内容")
         # ... 原有解析逻辑 ...
         url = raw_input
 
@@ -272,6 +300,8 @@ async def parse_video(request: ParseRequest, current_user: Optional[models.User]
         downloader = VideoDownloader()
         parsed_data = await asyncio.to_thread(downloader.parse_video, url)
         return parsed_data
+    except HTTPException:
+         raise
     except Exception as e:
          import traceback
          traceback.print_exc()
@@ -288,11 +318,6 @@ async def get_task_status(task_id: str):
     if not status:
         return {"progress": 0, "status": "not_found"}
     return status
-
-# 接口 3: 执行下载并流化返回文件
-# 支持 GET 和 POST。GET 用于浏览器原生下载显示进度，POST 保持兼容性。
-# 全局变量：存储下载任务进度
-download_tasks = {}
 
 # 接口 3: 下载准备任务 (创建下载任务并后台执行)
 @app.post("/api/download/prepare")
@@ -313,7 +338,6 @@ async def prepare_download(request: Request, current_user: models.User = Depends
             current_user.daily_download_count = 0
         
         if not current_user.is_vip:
-            FREE_LIMIT = 5 # 普通用户每天 5 次
             if current_user.daily_download_count >= FREE_LIMIT:
                 raise HTTPException(status_code=403, detail=f"每日限额已达 ({FREE_LIMIT}次)，请升级 VIP 享受无限下载")
         else:
@@ -322,7 +346,6 @@ async def prepare_download(request: Request, current_user: models.User = Depends
                 current_user.is_vip = False
                 await db.commit()
                 # 过期后退回普通用户限额检查
-                FREE_LIMIT = 5
                 if current_user.daily_download_count >= FREE_LIMIT:
                     raise HTTPException(status_code=403, detail="您的 VIP 已到期，且免费额度已用完，请续费")
 
@@ -401,7 +424,8 @@ async def prepare_download(request: Request, current_user: models.User = Depends
         asyncio.create_task(run_download_task())
         
         return {"task_id": task_id}
-
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
