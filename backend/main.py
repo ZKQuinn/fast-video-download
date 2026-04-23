@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 from downloader import VideoDownloader
 from douyin import DouyinParser
+from agent.orchestrator import run_agent
 import models
 from database import engine, Base, get_db
 from auth import (
@@ -83,6 +84,10 @@ class DownloadRequest(BaseModel):
     format_id: str = "best" # 目标格式 ID，默认为最佳画质
     is_audio_only: bool = False # 是否仅下载音频
 
+
+class AgentRunRequest(BaseModel):
+    url: str = ""
+
 # 启动事件：确保数据库和下载目录存在并清理旧文件
 @app.on_event("startup")
 async def startup_event():
@@ -106,6 +111,17 @@ async def startup_event():
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok", "message": "服务运行正常"}
+
+
+@app.post("/api/agent/run")
+async def run_agent_endpoint(request: AgentRunRequest):
+    if not request.url.strip():
+        raise HTTPException(status_code=400, detail="缺少 URL")
+
+    result = await asyncio.to_thread(run_agent, request.url)
+    if result.get("status") == "failed":
+        return result
+    return result
 
 # --- 用户与认证接口 ---
 
