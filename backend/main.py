@@ -16,7 +16,7 @@ import asyncio
 import os
 import time
 import re
-from typing import Optional
+from typing import Optional, Any
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
@@ -25,11 +25,11 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from downloader import VideoDownloader
 from douyin import DouyinParser
-from agent.orchestrator import run_agent
+from app.agent.orchestrator import run as run_app_agent
 import models
 from database import engine, Base, get_db
 from auth import (
@@ -86,7 +86,15 @@ class DownloadRequest(BaseModel):
 
 
 class AgentRunRequest(BaseModel):
-    url: str = ""
+    message: str = ""
+    session_id: Optional[str] = None
+    context: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentChatRequest(BaseModel):
+    message: str = ""
+    session_id: Optional[str] = None
+    context: dict[str, Any] = Field(default_factory=dict)
 
 # 启动事件：确保数据库和下载目录存在并清理旧文件
 @app.on_event("startup")
@@ -115,13 +123,81 @@ async def health_check():
 
 @app.post("/api/agent/run")
 async def run_agent_endpoint(request: AgentRunRequest):
-    if not request.url.strip():
-        raise HTTPException(status_code=400, detail="缺少 URL")
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="缺少 message")
 
-    result = await asyncio.to_thread(run_agent, request.url)
-    if result.get("status") == "failed":
-        return result
-    return result
+    return await _run_agent_request(request.message, request.session_id, request.context)
+
+
+@app.post("/api/agent/chat")
+async def chat_agent_endpoint(request: AgentChatRequest):
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="缺少 message")
+
+    if not _is_video_task_message(request.message, request.context):
+        return {
+            "status": "unsupported",
+            "message": "当前仅支持视频相关任务",
+        }
+
+    return await _run_agent_request(request.message, request.session_id, request.context)
+
+
+async def _run_agent_request(
+    message: str,
+    session_id: Optional[str],
+    context: dict[str, Any],
+) -> dict:
+    session_context = dict(context or {})
+    if session_id:
+        session_context["session_id"] = session_id
+
+    result = await asyncio.to_thread(
+        run_app_agent,
+        message,
+        session_context or None,
+    )
+    return _summarize_agent_result(result, session_id)
+
+
+def _is_video_task_message(message: str, context: dict[str, Any]) -> bool:
+    text = (message or "").lower()
+    raw_text = message or ""
+    if re.search(r"https?://[^\s]+", raw_text):
+        return True
+    if context and (context.get("url") or context.get("task_id")):
+        return True
+
+    keywords = (
+        "video", "download", "audio", "mp3", "parse", "metadata",
+        "status", "progress", "视频", "下载", "音频", "解析",
+        "进度", "任务", "链接",
+    )
+    return any(keyword in text or keyword in raw_text for keyword in keywords)
+
+
+def _summarize_agent_result(result: dict, session_id: Optional[str] = None) -> dict:
+    execution = result.get("execution") or {}
+    return {
+        "status": result.get("status"),
+        "session_id": session_id,
+        "perception": result.get("perception"),
+        "plan": result.get("plan"),
+        "execution": {
+            "ok": execution.get("ok"),
+            "goal": execution.get("goal"),
+            "error": execution.get("error"),
+            "steps": [
+                {
+                    "ok": step.get("ok"),
+                    "tool": step.get("tool"),
+                    "error": step.get("error"),
+                }
+                for step in execution.get("steps", [])
+            ],
+        },
+        "reflection": result.get("reflection"),
+    }
 
 # --- 用户与认证接口 ---
 

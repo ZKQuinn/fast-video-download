@@ -4,6 +4,9 @@ import shutil
 import yt_dlp
 from typing import Optional
 from urllib.parse import urlparse
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def _find_ffmpeg_path() -> Optional[str]:
@@ -22,6 +25,7 @@ class VideoDownloader:
     """yt-dlp 封装层，提供视频解析、下载、直链获取能力"""
 
     DOWNLOAD_DIR = os.path.join(os.path.dirname(__file__), "downloads")
+    BASE_DIR = os.path.dirname(__file__)
 
     def __init__(self):
         os.makedirs(self.DOWNLOAD_DIR, exist_ok=True)
@@ -48,6 +52,46 @@ class VideoDownloader:
             return f"https://{parsed.netloc}/"
         except Exception:
             return "https://www.douyin.com/"
+
+    @staticmethod
+    def _is_bilibili_url(url: str) -> bool:
+        try:
+            host = urlparse(url).netloc.lower()
+        except Exception:
+            return False
+
+        return any(
+            domain in host
+            for domain in ("bilibili.com", "b23.tv", "bili2233.cn")
+        )
+
+    def _get_bilibili_cookiefile(self) -> Optional[str]:
+        cookiefile = os.getenv("BILIBILI_COOKIE_FILE", "").strip()
+        if not cookiefile:
+            return None
+
+        cookiefile = os.path.expanduser(cookiefile)
+        if not os.path.isabs(cookiefile):
+            cookiefile = os.path.join(self.BASE_DIR, cookiefile)
+
+        return cookiefile if os.path.exists(cookiefile) else None
+
+    def _apply_site_options(self, ydl_opts: dict, url: str) -> dict:
+        """Apply platform-specific yt-dlp options without changing download logic."""
+        if not self._is_bilibili_url(url):
+            return ydl_opts
+
+        headers = ydl_opts.setdefault("http_headers", {})
+        headers.update({
+            "Referer": "https://www.bilibili.com/",
+            "Origin": "https://www.bilibili.com",
+        })
+
+        cookiefile = self._get_bilibili_cookiefile()
+        if cookiefile:
+            ydl_opts["cookiefile"] = cookiefile
+
+        return ydl_opts
 
     @staticmethod
     def _sanitize_filename(name: str) -> str:
@@ -102,6 +146,7 @@ class VideoDownloader:
                 "youtube": {"skip": ["hls", "dash"]},
             },
         })
+        self._apply_site_options(ydl_opts, url)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -294,6 +339,7 @@ class VideoDownloader:
             "noplaylist": True,
             "progress_hooks": [_progress_hook],
         })
+        self._apply_site_options(ydl_opts, url)
 
         if self.has_ffmpeg:
             ydl_opts["ffmpeg_location"] = self.ffmpeg_path
@@ -346,12 +392,15 @@ class VideoDownloader:
 
     def get_direct_url(self, url: str, format_id: str) -> dict:
         """获取视频直链"""
-        ydl_opts = {
+        ydl_opts = self.common_ytdl_opts.copy()
+        ydl_opts['http_headers'] = self.common_ytdl_opts['http_headers'].copy()
+        ydl_opts.update({
             "format": format_id,
             "quiet": True,
             "no_warnings": True,
             "noplaylist": True,
-        }
+        })
+        self._apply_site_options(ydl_opts, url)
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
