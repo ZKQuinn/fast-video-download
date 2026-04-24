@@ -48,15 +48,10 @@ class AppPlanningTests(unittest.TestCase):
                         "tool": "parse_video",
                         "args": {"url": "https://example.com/video"},
                     },
-                    {
-                        "id": "s2",
-                        "tool": "download_video",
-                        "args": {
-                            "url": "https://example.com/video",
-                            "is_audio_only": False,
-                        },
-                    },
                 ],
+                "requires_user_confirmation": True,
+                "recommended_action": "select_format",
+                "format_hint": None,
             },
         )
 
@@ -68,8 +63,8 @@ class AppPlanningTests(unittest.TestCase):
         })
 
         self.assertEqual(plan["goal"], "download_audio")
-        self.assertEqual(plan["steps"][1]["tool"], "download_video")
-        self.assertTrue(plan["steps"][1]["args"]["is_audio_only"])
+        self.assertEqual([step["tool"] for step in plan["steps"]], ["parse_video"])
+        self.assertTrue(plan["requires_user_confirmation"])
 
     def test_allows_custom_planner_extension_point(self):
         class FakePlanner:
@@ -120,7 +115,6 @@ class AppPlanningTests(unittest.TestCase):
         self.assertEqual(plan["goal"], "download_video")
         self.assertEqual([step["tool"] for step in plan["steps"]], [
             "parse_video",
-            "download_video",
         ])
 
     def test_llm_planner_falls_back_on_invalid_tool(self):

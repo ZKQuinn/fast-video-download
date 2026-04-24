@@ -18,7 +18,15 @@
     />
     
     <main>
-      <HeroSection @parse="handleParse" @clear="handleClear" :loading="loading" />
+      <AgentChat />
+
+      <section class="legacy-mode-section">
+        <div class="mode-heading">
+          <span>传统模式</span>
+          <h2>直接解析下载</h2>
+        </div>
+        <HeroSection @parse="handleParse" @clear="handleClear" :loading="loading" />
+      </section>
       
       <div class="content-wrapper">
         <transition name="fade">
@@ -86,6 +94,7 @@ import { useI18n } from './i18n';
 import NavBar from './components/NavBar.vue';
 import AuthModal from './components/AuthModal.vue';
 import PricingModal from './components/PricingModal.vue';
+import AgentChat from './components/AgentChat.vue';
 import HeroSection from './components/HeroSection.vue';
 import VideoResult from './components/VideoResult.vue';
 import FeatureSection from './components/FeatureSection.vue';
@@ -203,6 +212,29 @@ const handleClear = () => {
 
 main {
   flex: 1;
+}
+
+.legacy-mode-section {
+  position: relative;
+}
+
+.mode-heading {
+  width: min(1180px, calc(100% - 40px));
+  margin: 0 auto -56px;
+  padding-top: 8px;
+  position: relative;
+  z-index: 12;
+}
+
+.mode-heading span {
+  color: rgba(255, 255, 255, 0.48);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.mode-heading h2 {
+  margin-top: 4px;
+  font-size: 1.35rem;
 }
 
 .content-wrapper {

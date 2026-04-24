@@ -77,6 +77,8 @@ class AppExecutionTests(unittest.TestCase):
 
         self.assertFalse(result["ok"])
         self.assertEqual(result["error"], "parse failed")
+        self.assertEqual(result["steps"][0]["exception_type"], "ValueError")
+        self.assertEqual(result["steps"][0]["exception_message"], "parse failed")
         self.assertEqual(calls, ["parse_video"])
         self.assertEqual(len(result["steps"]), 1)
 

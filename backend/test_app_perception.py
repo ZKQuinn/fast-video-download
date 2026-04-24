@@ -32,9 +32,18 @@ class AppPerceptionTests(unittest.TestCase):
                     "source": "rule_based",
                     "session_context": {"user_id": 7},
                     "is_audio_only": True,
+                    "format_hint": {"ext": "mp3", "is_audio_only": True},
                 },
             },
         )
+
+    def test_extracts_format_hint(self):
+        result = perceive("下载 720p MP4 https://example.com/video")
+
+        self.assertEqual(result["constraints"]["format_hint"], {
+            "resolution": 720,
+            "ext": "mp4",
+        })
 
     def test_detects_parse_video(self):
         self.assertEqual(

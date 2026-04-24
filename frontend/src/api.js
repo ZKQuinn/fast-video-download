@@ -1,7 +1,8 @@
 /**
  * 后端 API 接口基础路径
  */
-const API_BASE = 'http://127.0.0.1:8000/api';
+export const BACKEND_BASE = 'http://127.0.0.1:8000';
+const API_BASE = `${BACKEND_BASE}/api`;
 
 /**
  * 封装前端与后端的交互方法
@@ -112,6 +113,85 @@ export const api = {
             throw new Error(err);
         }
         
+        return await response.json();
+    },
+
+    /**
+     * 获取后端和下载依赖健康状态
+     */
+    async getHealth() {
+        const response = await fetch(`${API_BASE}/health`);
+        if (!response.ok) {
+            throw new Error('健康检查失败');
+        }
+        return await response.json();
+    },
+
+    /**
+     * 调用 AI Agent 聊天接口
+     */
+    async agentChat(message, context = {}, sessionId = 'web-demo', options = {}) {
+        if (!message || !message.trim()) {
+            throw new Error('请输入 Agent 任务内容');
+        }
+        if (context !== null && typeof context !== 'object') {
+            throw new Error('Agent context 必须是对象');
+        }
+
+        const response = await fetch(`${API_BASE}/agent/chat`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                message: message.trim(),
+                session_id: sessionId,
+                context: context || {},
+                dry_run: Boolean(options.dryRun)
+            })
+        });
+
+        if (!response.ok) {
+            let err = 'Agent 请求失败';
+            try {
+                const data = await response.json();
+                err = data.detail || err;
+            } catch (e) {}
+            throw new Error(err);
+        }
+
+        return await response.json();
+    },
+
+    /**
+     * Agent 模式下按用户选择的格式创建下载任务
+     */
+    async agentDownload(url, formatId, isAudioOnly = false, sessionId = 'web-demo') {
+        if (!url || !url.trim()) {
+            throw new Error('缺少视频 URL');
+        }
+        if (!formatId) {
+            throw new Error('请选择下载格式');
+        }
+
+        const response = await fetch(`${API_BASE}/agent/download`, {
+            method: 'POST',
+            headers: this.getHeaders(),
+            body: JSON.stringify({
+                url: url.trim(),
+                format_id: formatId,
+                is_audio_only: Boolean(isAudioOnly),
+                session_id: sessionId
+            })
+        });
+
+        if (!response.ok) {
+            let err = 'Agent 下载任务创建失败';
+            try {
+                const data = await response.json();
+                err = data.detail || err;
+            } catch (e) {}
+            throw new Error(err);
+        }
+
         return await response.json();
     },
 

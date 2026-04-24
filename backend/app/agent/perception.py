@@ -43,6 +43,10 @@ def perceive(
     if intent == "download_audio":
         constraints["is_audio_only"] = True
 
+    format_hint = _extract_format_hint(text)
+    if format_hint:
+        constraints["format_hint"] = format_hint
+
     return {
         "intent": intent,
         "entities": entities,
@@ -87,3 +91,26 @@ def _extract_task_id(text: str) -> str | None:
     if not match:
         return None
     return match.group(1)
+
+
+def _extract_format_hint(text: str) -> dict[str, Any] | None:
+    lowered = (text or "").lower()
+    hint: dict[str, Any] = {}
+
+    resolution_match = re.search(r"(\d{3,4})\s*p", lowered)
+    if resolution_match:
+        hint["resolution"] = int(resolution_match.group(1))
+
+    if "mp4" in lowered:
+        hint["ext"] = "mp4"
+    elif "webm" in lowered:
+        hint["ext"] = "webm"
+    elif "mp3" in lowered or "audio" in lowered or "音频" in text:
+        hint["ext"] = "mp3"
+        hint["is_audio_only"] = True
+
+    format_id_match = re.search(r"(?:format[_\s-]?id|格式)[:：\s]*([a-z0-9._+/-]+)", lowered)
+    if format_id_match:
+        hint["format_id"] = format_id_match.group(1)
+
+    return hint or None

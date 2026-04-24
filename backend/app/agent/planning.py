@@ -13,14 +13,16 @@ Return JSON only in this exact shape:
 {{
   "goal": "download_video|download_audio|parse_video",
   "steps": [
-    {{"id": "s1", "tool": "parse_video", "args": {{"url": "..."}}}},
-    {{"id": "s2", "tool": "download_video", "args": {{"url": "...", "is_audio_only": false}}}}
-  ]
+    {{"id": "s1", "tool": "parse_video", "args": {{"url": "..."}}}}
+  ],
+  "requires_user_confirmation": true
 }}
 
 Allowed tools:
 - parse_video
 - download_video
+
+For download requests, only parse first and wait for the user to choose a format.
 
 Perception context:
 {perception_json}
@@ -50,23 +52,18 @@ class RuleBasedPlanner:
         if intent == "download_audio":
             return {
                 "goal": "download_audio",
-                "steps": [
-                    _parse_step("s1", url),
-                    _download_step("s2", url, is_audio_only=True),
-                ],
+                "steps": [_parse_step("s1", url)],
+                "requires_user_confirmation": True,
+                "recommended_action": "select_audio_format",
             }
 
         if intent == "download_video":
             return {
                 "goal": "download_video",
-                "steps": [
-                    _parse_step("s1", url),
-                    _download_step(
-                        "s2",
-                        url,
-                        is_audio_only=bool(constraints.get("is_audio_only", False)),
-                    ),
-                ],
+                "steps": [_parse_step("s1", url)],
+                "requires_user_confirmation": True,
+                "recommended_action": "select_format",
+                "format_hint": constraints.get("format_hint"),
             }
 
         return {

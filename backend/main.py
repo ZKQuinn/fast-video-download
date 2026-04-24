@@ -14,6 +14,8 @@ Users are responsible for complying with local laws and platform terms.
 """
 import asyncio
 import os
+import shutil
+import sys
 import time
 import re
 from typing import Optional, Any
@@ -30,6 +32,13 @@ from pydantic import BaseModel, Field
 from downloader import VideoDownloader
 from douyin import DouyinParser
 from app.agent.orchestrator import run as run_app_agent
+from app.download_tasks import (
+    complete_download_task,
+    create_download_task,
+    fail_download_task,
+    task_status,
+    update_download_progress,
+)
 import models
 from database import engine, Base, get_db
 from auth import (
@@ -59,6 +68,7 @@ FRONTEND_ORIGINS = [
     if origin.strip()
 ]
 FREE_LIMIT = 5
+AGENT_DEMO_MODE = os.getenv("AGENT_DEMO_MODE", "false").lower() == "true"
 
 stripe.api_key = STRIPE_API_KEY
 
@@ -89,12 +99,21 @@ class AgentRunRequest(BaseModel):
     message: str = ""
     session_id: Optional[str] = None
     context: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
 
 
 class AgentChatRequest(BaseModel):
     message: str = ""
     session_id: Optional[str] = None
     context: dict[str, Any] = Field(default_factory=dict)
+    dry_run: bool = False
+
+
+class AgentDownloadRequest(BaseModel):
+    url: str
+    format_id: str = "best"
+    is_audio_only: bool = False
+    session_id: Optional[str] = None
 
 # 启动事件：确保数据库和下载目录存在并清理旧文件
 @app.on_event("startup")
@@ -118,7 +137,56 @@ async def startup_event():
 # 接口 1: 健康检查
 @app.get("/api/health")
 async def health_check():
-    return {"status": "ok", "message": "服务运行正常"}
+    return _build_health_response()
+
+
+def _build_health_response() -> dict:
+    ffmpeg_path = _find_ffmpeg_executable()
+    ytdlp_available, ytdlp_detail = _check_ytdlp_available()
+
+    return {
+        "status": "ok",
+        "backend": {
+            "status": "running",
+            "demo_mode": AGENT_DEMO_MODE,
+            "python_version": sys.version.split()[0],
+        },
+        "demo_mode": AGENT_DEMO_MODE,
+        "python_version": sys.version.split()[0],
+        "download_directory": DOWNLOAD_DIR,
+        "ffmpeg": {
+            "available": bool(ffmpeg_path),
+            "path": ffmpeg_path,
+        },
+        "yt_dlp": {
+            "available": ytdlp_available,
+            "detail": ytdlp_detail,
+        },
+    }
+
+
+def _find_ffmpeg_executable() -> Optional[str]:
+    direct_path = shutil.which("ffmpeg")
+    if direct_path:
+        return direct_path
+
+    try:
+        import static_ffmpeg
+
+        paths = static_ffmpeg.run.get_or_fetch_platform_executables_else_raise()
+        return paths[0] if paths else None
+    except Exception:
+        return None
+
+
+def _check_ytdlp_available() -> tuple[bool, str]:
+    try:
+        import yt_dlp
+
+        version = getattr(yt_dlp.version, "__version__", "unknown")
+        return True, version
+    except Exception as exc:
+        return False, str(exc)
 
 
 @app.post("/api/agent/run")
@@ -126,7 +194,12 @@ async def run_agent_endpoint(request: AgentRunRequest):
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="缺少 message")
 
-    return await _run_agent_request(request.message, request.session_id, request.context)
+    return await _run_agent_request(
+        request.message,
+        request.session_id,
+        request.context,
+        dry_run=request.dry_run,
+    )
 
 
 @app.post("/api/agent/chat")
@@ -140,24 +213,76 @@ async def chat_agent_endpoint(request: AgentChatRequest):
             "message": "当前仅支持视频相关任务",
         }
 
-    return await _run_agent_request(request.message, request.session_id, request.context)
+    if AGENT_DEMO_MODE:
+        return _build_agent_demo_response(
+            request.message,
+            request.session_id,
+            request.context,
+            dry_run=request.dry_run,
+        )
+
+    response = await _run_agent_request(
+        request.message,
+        request.session_id,
+        request.context,
+        dry_run=request.dry_run,
+        diagnostic=True,
+    )
+    if request.dry_run:
+        return response
+    return await _maybe_start_agent_download_from_message(response)
+
+
+@app.post("/api/agent/download")
+async def agent_download_endpoint(request: AgentDownloadRequest):
+    if not request.url.strip():
+        raise HTTPException(status_code=400, detail="缺少 url")
+
+    result = await _start_download_task(
+        request.url,
+        request.format_id,
+        request.is_audio_only,
+    )
+    return {
+        "task_id": result["task_id"],
+        "status": result["status"],
+        "selected_format": result["selected_format"],
+        "progress": result["progress"],
+    }
 
 
 async def _run_agent_request(
     message: str,
     session_id: Optional[str],
     context: dict[str, Any],
+    dry_run: bool = False,
+    diagnostic: bool = False,
 ) -> dict:
     session_context = dict(context or {})
     if session_id:
         session_context["session_id"] = session_id
 
-    result = await asyncio.to_thread(
-        run_app_agent,
-        message,
-        session_context or None,
-    )
-    return _summarize_agent_result(result, session_id)
+    try:
+        if dry_run:
+            result = await asyncio.to_thread(
+                run_app_agent,
+                message,
+                session_context or None,
+                dry_run=True,
+            )
+        else:
+            result = await asyncio.to_thread(
+                run_app_agent,
+                message,
+                session_context or None,
+            )
+        if diagnostic:
+            return _build_real_agent_response(result, session_id, dry_run=dry_run)
+        return _summarize_agent_result(result, session_id)
+    except Exception as exc:
+        if diagnostic:
+            return _build_real_agent_exception_response(exc, session_id, dry_run=dry_run)
+        raise
 
 
 def _is_video_task_message(message: str, context: dict[str, Any]) -> bool:
@@ -178,6 +303,7 @@ def _is_video_task_message(message: str, context: dict[str, Any]) -> bool:
 
 def _summarize_agent_result(result: dict, session_id: Optional[str] = None) -> dict:
     execution = result.get("execution") or {}
+    final_video = _extract_agent_video_result(execution)
     return {
         "status": result.get("status"),
         "session_id": session_id,
@@ -197,6 +323,414 @@ def _summarize_agent_result(result: dict, session_id: Optional[str] = None) -> d
             ],
         },
         "reflection": result.get("reflection"),
+        "final_video": final_video,
+        "suggested_next_action": _suggest_agent_next_action(result.get("status"), result.get("reflection")),
+    }
+
+
+def _build_real_agent_response(
+    result: dict,
+    session_id: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict:
+    perception = result.get("perception") or {}
+    plan = result.get("plan") or {}
+    execution = result.get("execution") or {}
+    reflection = result.get("reflection") or {}
+    final_result = _extract_agent_video_result(execution)
+    ok = bool(execution.get("ok")) and reflection.get("status") == "ok"
+    failed_step = _find_failed_agent_step(execution, plan)
+    error = _agent_error_message(execution, reflection, failed_step)
+
+    return {
+        "status": result.get("status"),
+        "mode": "real",
+        "ok": ok,
+        "session_id": session_id,
+        "dry_run": dry_run or bool(result.get("dry_run")),
+        "perception": perception,
+        "plan": plan,
+        "execution": execution,
+        "reflection": reflection,
+        "final_result": final_result,
+        "final_video": final_result,
+        "error": error,
+        "debug": {
+            "demo_mode": AGENT_DEMO_MODE,
+            "selected_intent": perception.get("intent"),
+            "selected_tools": _selected_tools(plan),
+            "failed_step": failed_step,
+            "exception_type": _exception_type_from_failed_step(failed_step),
+            "exception_message": _exception_message_from_failed_step(failed_step, error),
+            "raw_error_summary": _raw_error_summary(error),
+        },
+        "suggested_next_action": _suggest_agent_next_action(result.get("status"), reflection),
+    }
+
+
+def _build_real_agent_exception_response(
+    exc: Exception,
+    session_id: Optional[str] = None,
+    dry_run: bool = False,
+) -> dict:
+    return {
+        "status": "failed",
+        "mode": "real",
+        "ok": False,
+        "session_id": session_id,
+        "dry_run": dry_run,
+        "perception": None,
+        "plan": None,
+        "execution": {
+            "ok": False,
+            "goal": None,
+            "steps": [],
+            "error": str(exc),
+        },
+        "reflection": {
+            "status": "failed",
+            "reason": str(exc),
+            "repair_plan": [],
+        },
+        "final_result": None,
+        "final_video": None,
+        "error": str(exc),
+        "debug": {
+            "demo_mode": AGENT_DEMO_MODE,
+            "selected_intent": None,
+            "selected_tools": [],
+            "failed_step": None,
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
+            "raw_error_summary": _raw_error_summary(str(exc)),
+        },
+        "suggested_next_action": "Agent 运行前发生异常，请检查后端日志和请求参数。",
+    }
+
+
+def _selected_tools(plan: dict) -> list[str]:
+    return [
+        step.get("tool")
+        for step in plan.get("steps", [])
+        if step.get("tool")
+    ]
+
+
+def _find_failed_agent_step(execution: dict, plan: dict) -> Optional[dict]:
+    for index, step in enumerate(execution.get("steps", [])):
+        if step.get("ok", False):
+            continue
+
+        plan_step = {}
+        plan_steps = plan.get("steps") or []
+        if index < len(plan_steps):
+            plan_step = plan_steps[index] or {}
+
+        return {
+            "id": plan_step.get("id"),
+            "tool": step.get("tool") or plan_step.get("tool"),
+            "args": plan_step.get("args"),
+            "error": step.get("error"),
+            "exception_type": step.get("exception_type"),
+            "exception_message": step.get("exception_message") or step.get("error"),
+        }
+    return None
+
+
+def _agent_error_message(
+    execution: dict,
+    reflection: dict,
+    failed_step: Optional[dict],
+) -> Optional[str]:
+    if failed_step:
+        return failed_step.get("exception_message") or failed_step.get("error")
+    if execution.get("error"):
+        return execution.get("error")
+    if reflection.get("status") not in (None, "ok"):
+        return reflection.get("reason")
+    return None
+
+
+def _exception_type_from_failed_step(failed_step: Optional[dict]) -> Optional[str]:
+    return failed_step.get("exception_type") if failed_step else None
+
+
+def _exception_message_from_failed_step(
+    failed_step: Optional[dict],
+    error: Optional[str],
+) -> Optional[str]:
+    if failed_step:
+        return failed_step.get("exception_message") or failed_step.get("error")
+    return error
+
+
+def _raw_error_summary(error: Optional[str]) -> Optional[str]:
+    if not error:
+        return None
+    compact = " ".join(str(error).split())
+    return compact[:500]
+
+
+def _extract_agent_video_result(execution: dict) -> Optional[dict]:
+    parsed_data = None
+    download_data = None
+
+    for step in execution.get("steps", []):
+        data = step.get("data") or {}
+        if step.get("tool") == "parse_video" and data:
+            parsed_data = data
+        if step.get("tool") == "download_video" and data:
+            download_data = data
+
+    if not parsed_data and not download_data:
+        return None
+
+    parsed_data = parsed_data or {}
+    download_data = download_data or {}
+    return {
+        "title": parsed_data.get("title") or download_data.get("title"),
+        "platform": parsed_data.get("platform"),
+        "thumbnail": parsed_data.get("thumbnail"),
+        "duration_string": parsed_data.get("duration_string"),
+        "available_formats": parsed_data.get("formats", []),
+        "audio_formats": parsed_data.get("audio_formats", []),
+        "download_status": download_data.get("status"),
+        "task_id": download_data.get("task_id"),
+        "filepath": download_data.get("filepath"),
+        "filename": download_data.get("filename"),
+        "download_url": download_data.get("download_url"),
+    }
+
+
+async def _maybe_start_agent_download_from_message(response: dict) -> dict:
+    final_result = response.get("final_result")
+    if not final_result:
+        return response
+
+    plan = response.get("plan") or {}
+    perception = response.get("perception") or {}
+    intent = perception.get("intent")
+    url = (perception.get("entities") or {}).get("url")
+    if not url or intent not in ("download_video", "download_audio"):
+        return response
+
+    recommended_format = _select_recommended_format(final_result, plan, intent)
+    if recommended_format:
+        final_result["recommended_format"] = recommended_format
+        response["final_video"] = final_result
+
+    format_hint = plan.get("format_hint") or ((perception.get("constraints") or {}).get("format_hint"))
+    if not _should_auto_start_download(format_hint):
+        return response
+
+    selected_format = _match_format_from_hint(final_result, format_hint, intent)
+    if not selected_format:
+        return response
+
+    is_audio_only = bool(format_hint.get("is_audio_only")) or intent == "download_audio"
+    task = await _start_download_task(
+        url,
+        selected_format.get("format_id", "best"),
+        is_audio_only,
+    )
+    final_result.update({
+        "download_status": task["status"],
+        "task_id": task["task_id"],
+        "filename": task.get("filename"),
+        "download_url": task.get("download_url"),
+        "selected_format": selected_format,
+    })
+    response["final_video"] = final_result
+    response["agent_download"] = {
+        "task_id": task["task_id"],
+        "status": task["status"],
+        "selected_format": selected_format,
+        "progress": 0,
+    }
+    return response
+
+
+def _select_recommended_format(
+    final_result: dict,
+    plan: dict,
+    intent: Optional[str],
+) -> Optional[dict]:
+    format_hint = plan.get("format_hint") or {}
+    matched = _match_format_from_hint(final_result, format_hint, intent)
+    if matched:
+        return matched
+
+    if intent == "download_audio":
+        audio_formats = final_result.get("audio_formats") or []
+        return audio_formats[0] if audio_formats else None
+
+    formats = final_result.get("available_formats") or []
+    return formats[0] if formats else None
+
+
+def _should_auto_start_download(format_hint: Optional[dict]) -> bool:
+    if not format_hint:
+        return False
+    return bool(format_hint.get("format_id") or format_hint.get("resolution"))
+
+
+def _match_format_from_hint(
+    final_result: dict,
+    format_hint: Optional[dict],
+    intent: Optional[str],
+) -> Optional[dict]:
+    if not format_hint and intent != "download_audio":
+        return None
+
+    candidates = []
+    if intent == "download_audio" or (format_hint or {}).get("is_audio_only"):
+        candidates.extend(final_result.get("audio_formats") or [])
+    candidates.extend(final_result.get("available_formats") or [])
+
+    if not candidates:
+        return None
+
+    hint = format_hint or {}
+    requested_format_id = hint.get("format_id")
+    requested_resolution = hint.get("resolution")
+    requested_ext = hint.get("ext")
+
+    for candidate in candidates:
+        if requested_format_id and str(candidate.get("format_id")) == str(requested_format_id):
+            return candidate
+
+    for candidate in candidates:
+        if requested_resolution and int(candidate.get("height") or 0) != int(requested_resolution):
+            continue
+        if requested_ext and candidate.get("ext") != requested_ext:
+            continue
+        return candidate
+
+    if intent == "download_audio":
+        return candidates[0]
+    return None
+
+
+def _suggest_agent_next_action(status: Optional[str], reflection: Optional[dict]) -> str:
+    if status == "planned":
+        return "Dry-run 已完成：计划已生成，可以切换为真实执行来调用工具。"
+    if status == "completed":
+        return "解析完成：请选择一个格式，然后点击开始下载。"
+    if reflection and reflection.get("status") == "needs_repair":
+        return "建议根据 repair_plan 重新执行失败步骤。"
+    return "请检查输入链接或稍后重试。"
+
+
+def _build_agent_demo_response(
+    message: str,
+    session_id: Optional[str],
+    context: dict[str, Any],
+    dry_run: bool = False,
+) -> dict:
+    url = (context or {}).get("url") or "https://www.bilibili.com/video/BV1AgentDemo/"
+    execution = {
+        "ok": True,
+        "goal": "download_video",
+        "error": None,
+        "steps": [],
+        "dry_run": True,
+    } if dry_run else {
+        "ok": True,
+        "goal": "download_video",
+        "error": None,
+        "steps": [
+            {
+                "ok": True,
+                "tool": "parse_video",
+                "error": None,
+                "data": {
+                    "title": "AI Agent 演示视频：从链接到任务计划",
+                    "platform": "BiliBili",
+                    "formats": [
+                        {"format_id": "1080p", "label": "1080P · MP4", "height": 1080, "ext": "mp4"},
+                        {"format_id": "720p", "label": "720P · MP4", "height": 720, "ext": "mp4"},
+                        {"format_id": "audio", "label": "音频 · MP3", "height": 0, "ext": "mp3"},
+                    ],
+                },
+            },
+            {
+                "ok": True,
+                "tool": "download_video",
+                "error": None,
+                "data": {
+                    "filename": "agent-demo-video.mp4",
+                    "filepath": "/demo/agent-demo-video.mp4",
+                    "title": "AI Agent 演示视频：从链接到任务计划",
+                    "ext": "mp4",
+                },
+            },
+        ],
+    }
+    final_result = {
+        "title": "AI Agent 演示视频：从链接到任务计划",
+        "platform": "BiliBili",
+        "download_status": "completed",
+        "task_id": "demo-task-id",
+        "filename": "agent-demo-video.mp4",
+        "download_url": "/api/download/fetch/demo-task-id",
+        "available_formats": [
+            {"format_id": "1080p", "label": "1080P · MP4", "height": 1080, "ext": "mp4"},
+            {"format_id": "720p", "label": "720P · MP4", "height": 720, "ext": "mp4"},
+            {"format_id": "audio", "label": "音频 · MP3", "height": 0, "ext": "mp3"},
+        ],
+    }
+    return {
+        "status": "planned" if dry_run else "completed",
+        "mode": "demo",
+        "ok": True,
+        "session_id": session_id,
+        "demo_mode": True,
+        "dry_run": dry_run,
+        "perception": {
+            "intent": "download_video",
+            "entities": {
+                "url": url,
+                "platform_hint": "bilibili",
+            },
+            "constraints": {
+                "source": "demo_rule_based",
+                "original_message": message,
+            },
+        },
+        "plan": {
+            "goal": "download_video",
+            "steps": [
+                {
+                    "id": "s1",
+                    "tool": "parse_video",
+                    "args": {"url": url},
+                },
+                {
+                    "id": "s2",
+                    "tool": "download_video",
+                    "args": {"url": url, "format_id": "best", "is_audio_only": False},
+                },
+            ],
+        },
+        "execution": execution,
+        "reflection": {
+            "status": "ok",
+            "reason": "Dry-run 演示已完成：只生成计划，未模拟工具调用。" if dry_run else "演示模式下解析、计划、工具调用和结果检查均已完成。",
+            "repair_plan": [],
+        },
+        "final_result": None if dry_run else final_result,
+        "final_video": None if dry_run else final_result,
+        "error": None,
+        "debug": {
+            "demo_mode": True,
+            "selected_intent": "download_video",
+            "selected_tools": ["parse_video", "download_video"],
+            "failed_step": None,
+            "exception_type": None,
+            "exception_message": None,
+            "raw_error_summary": None,
+        },
+        "suggested_next_action": "Dry-run 完成：确认计划后可以点击运行 Agent。" if dry_run else "展示完成：可以切换到真实模式，用实际视频链接执行同样的 Agent 流程。",
     }
 
 # --- 用户与认证接口 ---
@@ -399,10 +933,6 @@ async def parse_video(request: ParseRequest, current_user: Optional[models.User]
          traceback.print_exc()
          raise HTTPException(status_code=500, detail=str(e))
 
-# 全局任务状态字典
-# 格式: { task_id: { "progress": 0, "status": "preparing", "filename": "" } }
-task_status = {}
-
 @app.get("/api/task/status/{task_id}")
 async def get_task_status(task_id: str):
     """查询下载任务的实时进度"""
@@ -410,6 +940,77 @@ async def get_task_status(task_id: str):
     if not status:
         return {"progress": 0, "status": "not_found"}
     return status
+
+
+@app.get("/api/download/status/{task_id}")
+async def get_download_status(task_id: str):
+    """Agent/legacy compatible download task status endpoint."""
+    return await get_task_status(task_id)
+
+
+async def _start_download_task(
+    url: str,
+    format_id: str = "best",
+    is_audio_only: bool = False,
+) -> dict:
+    if not url:
+        raise HTTPException(status_code=400, detail="必须提供视频链接 URL")
+
+    match = re.search(r"https?://[^\s]+", url)
+    target_url = match.group(0) if match else url
+    if target_url.endswith('】'):
+        target_url = target_url.rstrip('】')
+
+    task_id = create_download_task()
+
+    def progress_callback(data):
+        update_download_progress(task_id, data)
+
+    async def run_download_task():
+        try:
+            if "douyin.com" in target_url:
+                parser = DouyinParser()
+                result = await asyncio.to_thread(
+                    parser.download,
+                    target_url,
+                    "audio" if is_audio_only else "video",
+                    progress_callback,
+                )
+            else:
+                downloader = VideoDownloader()
+                result = await asyncio.to_thread(
+                    downloader.download_video,
+                    target_url,
+                    format_id,
+                    is_audio_only,
+                    progress_callback,
+                )
+
+            if result and os.path.exists(result["filepath"]):
+                complete_download_task(
+                    task_id,
+                    result["filepath"],
+                    os.path.basename(result["filepath"]),
+                )
+            else:
+                fail_download_task(task_id, "下载失败，未生成文件")
+        except Exception as e:
+            print(f"任务 {task_id} 失败: {e}")
+            fail_download_task(task_id, str(e))
+
+    task_status[task_id]["status"] = "downloading"
+    task_status[task_id]["message"] = "下载任务已启动"
+    asyncio.create_task(run_download_task())
+
+    return {
+        "task_id": task_id,
+        "status": task_status[task_id]["status"],
+        "progress": task_status[task_id]["progress"],
+        "selected_format": {
+            "format_id": format_id,
+            "is_audio_only": is_audio_only,
+        },
+    }
 
 # 接口 3: 下载准备任务 (创建下载任务并后台执行)
 @app.post("/api/download/prepare")
@@ -452,70 +1053,8 @@ async def prepare_download(request: Request, current_user: models.User = Depends
         if target_url.endswith('】'): # 处理 B 站分享链接结尾多出的括号
              target_url = target_url.rstrip('】')
 
-        # 生成唯一的任务 ID
-        import uuid
-        task_id = str(uuid.uuid4())
-        task_status[task_id] = {
-            "progress": 0, 
-            "status": "downloading", 
-            "speed": "0 KB/s",
-            "filename": "",
-            "filepath": ""
-        }
-
-        # 定义进度回调
-        def progress_callback(data):
-            if task_id in task_status:
-                task_status[task_id]["progress"] = data["progress_percent"]
-                task_status[task_id]["download_type"] = data.get("download_type", "video")
-                if data["status"] == "finished":
-                    task_status[task_id]["status"] = "merging"
-                else:
-                    task_status[task_id]["status"] = "downloading"
-                
-                if data.get("speed"):
-                    speed_mb = data["speed"] / (1024 * 1024)
-                    task_status[task_id]["speed"] = f"{speed_mb:.1f} MB/s"
-
-        # 在后台线程中启动下载
-        async def run_download_task():
-            try:
-                # 抖音链接特殊路由：不走 yt-dlp
-                if "douyin.com" in target_url:
-                    parser = DouyinParser()
-                    result = await asyncio.to_thread(
-                        parser.download,
-                        target_url,
-                        "video",
-                        progress_callback
-                    )
-                else:
-                    # 通用平台
-                    downloader = VideoDownloader()
-                    result = await asyncio.to_thread(
-                        downloader.download_video, 
-                        target_url, 
-                        format_id, 
-                        is_audio_only, 
-                        progress_callback
-                    )
-                
-                if result and os.path.exists(result["filepath"]):
-                    task_status[task_id]["status"] = "completed"
-                    task_status[task_id]["filepath"] = result["filepath"]
-                    task_status[task_id]["filename"] = os.path.basename(result["filepath"])
-                    task_status[task_id]["progress"] = 100
-                else:
-                    task_status[task_id]["status"] = "failed"
-            except Exception as e:
-                print(f"任务 {task_id} 失败: {e}")
-                task_status[task_id]["status"] = "failed"
-                task_status[task_id]["error"] = str(e)
-
-        # 启动后台任务
-        asyncio.create_task(run_download_task())
-        
-        return {"task_id": task_id}
+        result = await _start_download_task(target_url, format_id, is_audio_only)
+        return {"task_id": result["task_id"]}
     except HTTPException:
         raise
     except Exception as e:

@@ -53,4 +53,6 @@ def execute_step(
             "tool": tool_name,
             "data": None,
             "error": str(exc),
+            "exception_type": type(exc).__name__,
+            "exception_message": str(exc),
         }

@@ -12,10 +12,34 @@ def run(
     session_context: dict[str, Any] | None = None,
     planner: Planner | None = None,
     tool_runner: ToolRunner = run_tool,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Run perception -> planning -> execution -> reflection for a user request."""
     perception = perceive(user_input, session_context=session_context)
     plan = create_plan(perception, planner=planner)
+
+    if dry_run:
+        execution = {
+            "ok": True,
+            "goal": plan.get("goal"),
+            "steps": [],
+            "error": None,
+            "dry_run": True,
+        }
+        reflection = {
+            "status": "ok",
+            "reason": "dry_run enabled; execution skipped after planning",
+            "repair_plan": [],
+        }
+        return {
+            "status": "planned",
+            "perception": perception,
+            "plan": plan,
+            "execution": execution,
+            "reflection": reflection,
+            "dry_run": True,
+        }
+
     execution = execute_plan(plan, tool_runner=tool_runner)
     reflection = reflect(execution, plan=plan)
 
