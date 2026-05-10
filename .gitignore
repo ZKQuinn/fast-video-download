@@ -1,31 +1,49 @@
-# Node
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Node / Vite
 node_modules/
+frontend/node_modules/
 dist/
 dist-ssr/
+frontend/dist/
 *.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
 venv/
 env/
-.env
+backend/venv/
 
-# MacOS
+# IDE / OS
 .DS_Store
-
-# IDE
-.vscode/
 .idea/
+.vscode/
 
-# Downloaded files
+# Runtime output
 backend/downloads/
-
-# Database
+downloads/
 *.db
+*.sqlite
+*.sqlite3
 
-# AI Artifacts & Tests
+# Local artifacts
 artifacts/
 backend/test_results.json
 backend/test_links.py

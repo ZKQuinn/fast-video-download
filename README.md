@@ -7,6 +7,31 @@ Fast Video Download 是一个基于 **FastAPI + Vue 3 + yt-dlp + ffmpeg** 的视
 
 > 合规说明：本项目仅用于技术学习和研究。请只下载自己拥有版权或已获得合法授权的内容，并遵守平台条款与当地法律法规。
 
+## 快速开始
+
+环境要求：
+
+- Python 3.10+
+- Node.js 18+
+- npm
+- ffmpeg（推荐已安装到系统 PATH；未安装时会尝试走 `static-ffmpeg`）
+
+首次启动：
+
+```bash
+cp .env.example .env
+chmod +x dev.sh
+./dev.sh
+```
+
+启动后访问：
+
+- 前端：http://127.0.0.1:5173
+- 后端：http://127.0.0.1:8000
+- 健康检查：http://127.0.0.1:8000/api/health
+
+默认建议先用 Demo Mode 验证界面和 Agent 链路；准备真实下载时，再把 `.env` 中的 `AGENT_DEMO_MODE` 改为 `false`。
+
 ---
 
 ## 视觉展示
@@ -316,6 +341,12 @@ npm install
 npm run dev -- --host 127.0.0.1 --port 5173
 ```
 
+补充说明：
+
+- `dev.sh` 会自动创建 `backend/venv`、安装后端依赖，并在 `frontend/node_modules` 不存在时执行 `npm install`。
+- 下载文件默认保存在 [backend/downloads](/Users/kwin/kwinLearn/fast-video-download/backend/downloads)。
+- SQLite 数据库默认是项目根目录下的 `fast_download.db`。
+
 ---
 
 ## 环境变量
@@ -337,6 +368,7 @@ BILIBILI_COOKIE_FILE=
 
 - `AGENT_DEMO_MODE=true`：Agent Chat 返回稳定模拟数据，适合展示。
 - `AGENT_DEMO_MODE=false`：真实调用 `parse_video` tool，并在用户选择格式后创建真实下载任务。
+- `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL`：只在启用 LLM Planner 时使用；留空时会走规则兜底。
 - `BILIBILI_COOKIE_FILE`：部分 B 站视频需要 Cookie 才能解析或下载。
 - `STRIPE_API_KEY` / `STRIPE_WEBHOOK_SECRET`：只在测试支付功能时需要。
 
